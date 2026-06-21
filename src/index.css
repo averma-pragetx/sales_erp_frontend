@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f8f8f8;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.field-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  margin-bottom: 4px;
+}
+
+.field-input {
+  width: 100%;
+  font-size: 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #111827;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.field-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+/* ── Proposal rendered body ──────────────────────────────────────────────── */
+.proposal-body { color: #111827; font-size: 0.875rem; line-height: 1.75; }
+.proposal-body h1 { font-size: 1.25rem; font-weight: 700; margin: 1.5rem 0 0.75rem; color: #111827; }
+.proposal-body h2 { font-size: 1.05rem; font-weight: 700; margin: 1.25rem 0 0.5rem; color: #1e293b; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.25rem; }
+.proposal-body h3 { font-size: 0.9375rem; font-weight: 600; margin: 1rem 0 0.4rem; color: #374151; }
+.proposal-body p  { margin: 0.6rem 0; }
+.proposal-body ul, .proposal-body ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+.proposal-body li { margin: 0.2rem 0; }
+.proposal-body hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.25rem 0; }
+.proposal-body strong { font-weight: 700; }
+.proposal-body em    { font-style: italic; color: #6b7280; }
+.proposal-body table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.8125rem; }
+.proposal-body th   { background: #f8fafc; font-weight: 600; text-align: left; padding: 6px 10px; border: 1px solid #e2e8f0; color: #374151; }
+.proposal-body td   { padding: 5px 10px; border: 1px solid #e2e8f0; vertical-align: top; }
+.proposal-body tr:nth-child(even) td { background: #fafafa; }
