@@ -282,6 +282,8 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ completedUpTo, currentStage, currentStageName }),
       }),
+    delete: (id: string) =>
+      request<{ message: string }>(`/api/inquiries/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   },
 
   documents: {

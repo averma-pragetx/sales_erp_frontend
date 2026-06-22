@@ -5,9 +5,10 @@ interface Props {
   cluster: Cluster;
   inquiries: Inquiry[];
   onAdd: () => void;
+  onDelete: (id: string) => void;
 }
 
-export default function PipelineColumn({ cluster, inquiries, onAdd }: Props) {
+export default function PipelineColumn({ cluster, inquiries, onAdd, onDelete }: Props) {
   return (
     <div className="flex flex-col min-w-0 flex-1" style={{ minWidth: 260, maxWidth: 320 }}>
       {/* Column header */}
@@ -51,7 +52,7 @@ export default function PipelineColumn({ cluster, inquiries, onAdd }: Props) {
         {inquiries.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-8 italic">No inquiries</p>
         ) : (
-          inquiries.map(inq => <InquiryCard key={inq.id} inquiry={inq} />)
+          inquiries.map(inq => <InquiryCard key={inq.id} inquiry={inq} onDelete={onDelete} />)
         )}
       </div>
     </div>

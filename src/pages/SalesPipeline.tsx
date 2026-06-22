@@ -48,6 +48,23 @@ export default function SalesPipeline() {
     setAddingTo(null);
   }
 
+  async function handleDelete(id: string) {
+    // Optimistic removal
+    setApiInquiries(prev => prev.filter(i => i.inquiryId !== id));
+    setInquiries(prev => prev.filter(i => i.id !== id));
+    try {
+      await api.inquiries.delete(id);
+    } catch (e) {
+      // Re-fetch to restore state if delete failed
+      const data = await api.inquiries.list().catch(() => null);
+      if (data) {
+        setApiInquiries(data);
+        setInquiries(data.map(mapApiToInquiry));
+      }
+      console.error('Delete failed:', e);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="mb-6">
@@ -73,6 +90,7 @@ export default function SalesPipeline() {
               cluster={cluster}
               inquiries={inquiries.filter(i => i.cluster === cluster.key)}
               onAdd={() => setAddingTo(cluster.key)}
+              onDelete={handleDelete}
             />
           ))}
         </div>
