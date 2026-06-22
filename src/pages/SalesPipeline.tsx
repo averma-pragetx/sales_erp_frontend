@@ -28,6 +28,7 @@ export default function SalesPipeline() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dragOverCluster, setDragOverCluster] = useState<string | null>(null);
 
   // Modal state: null = closed, ClusterKey = open for that cluster
   const [addingTo, setAddingTo] = useState<ClusterKey | null>(null);
@@ -65,6 +66,33 @@ export default function SalesPipeline() {
     }
   }
 
+  function handleDragOver(e: React.DragEvent, clusterKey: string) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverCluster(clusterKey);
+  }
+
+  function handleDrop(e: React.DragEvent, targetCluster: string) {
+    e.preventDefault();
+    setDragOverCluster(null);
+    const inquiryId = e.dataTransfer.getData('text/plain');
+    if (!inquiryId) return;
+    const current = inquiries.find(i => i.id === inquiryId);
+    if (!current || current.cluster === targetCluster) return;
+
+    // Optimistic update
+    setInquiries(prev =>
+      prev.map(i => i.id === inquiryId ? { ...i, cluster: targetCluster as ClusterKey } : i),
+    );
+
+    api.inquiries.kanbanMove(inquiryId, targetCluster).catch(() => {
+      // Rollback on failure
+      setInquiries(prev =>
+        prev.map(i => i.id === inquiryId ? { ...i, cluster: current.cluster } : i),
+      );
+    });
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="mb-6">
@@ -91,6 +119,10 @@ export default function SalesPipeline() {
               inquiries={inquiries.filter(i => i.cluster === cluster.key)}
               onAdd={() => setAddingTo(cluster.key)}
               onDelete={handleDelete}
+              isDragOver={dragOverCluster === cluster.key}
+              onDragOver={e => handleDragOver(e, cluster.key)}
+              onDragLeave={() => setDragOverCluster(null)}
+              onDrop={handleDrop}
             />
           ))}
         </div>

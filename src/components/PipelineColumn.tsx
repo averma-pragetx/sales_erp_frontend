@@ -6,11 +6,21 @@ interface Props {
   inquiries: Inquiry[];
   onAdd: () => void;
   onDelete: (id: string) => void;
+  isDragOver?: boolean;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: () => void;
+  onDrop?: (e: React.DragEvent, clusterKey: string) => void;
 }
 
-export default function PipelineColumn({ cluster, inquiries, onAdd, onDelete }: Props) {
+export default function PipelineColumn({ cluster, inquiries, onAdd, onDelete, isDragOver, onDragOver, onDragLeave, onDrop }: Props) {
   return (
-    <div className="flex flex-col min-w-0 flex-1" style={{ minWidth: 260, maxWidth: 320 }}>
+    <div
+      className="flex flex-col min-w-0 flex-1"
+      style={{ minWidth: 260, maxWidth: 320 }}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={e => onDrop?.(e, cluster.key)}
+    >
       {/* Column header */}
       <div
         className="rounded-lg border border-gray-200 bg-white px-4 py-3 mb-3"
@@ -48,7 +58,11 @@ export default function PipelineColumn({ cluster, inquiries, onAdd, onDelete }: 
       </div>
 
       {/* Cards */}
-      <div className="flex flex-col gap-3">
+      <div
+        className={`flex flex-col gap-3 min-h-20 rounded-lg transition-colors ${
+          isDragOver ? 'bg-blue-50 ring-2 ring-blue-300 ring-inset' : ''
+        }`}
+      >
         {inquiries.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-8 italic">No inquiries</p>
         ) : (
