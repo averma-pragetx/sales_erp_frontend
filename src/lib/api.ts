@@ -247,10 +247,15 @@ export interface ApiStage8 {
 
 // ─── HTTP client ──────────────────────────────────────────────────────────────
 
+// In production the frontend calls Render directly (avoids Netlify proxy
+// mangling multipart boundaries). Set VITE_API_URL in Netlify env vars.
+// In development it's empty and Vite's proxy handles /api/* → localhost:3001.
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const isFormData = options.body instanceof FormData;
 
-  const res = await fetch(url, {
+  const res = await fetch(API_BASE + url, {
     ...options,
     headers: isFormData
       ? options.headers                                          // browser sets multipart boundary
