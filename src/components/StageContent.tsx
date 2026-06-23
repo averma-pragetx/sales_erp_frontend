@@ -1830,10 +1830,16 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
   const [err, setErr] = useState<string | null>(null);
 
   // Inline edit
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editRate, setEditRate] = useState('');
-  const [editQty, setEditQty] = useState('');
-  const [savingEdit, setSavingEdit] = useState(false);
+  const [editingId, setEditingId]       = useState<string | null>(null);
+  const [editTag, setEditTag]           = useState('');
+  const [editName, setEditName]         = useState('');
+  const [editQty, setEditQty]           = useState('');
+  const [editUnit, setEditUnit]         = useState('');
+  const [editMoc, setEditMoc]           = useState('');
+  const [editRate, setEditRate]         = useState('');
+  const [editNotes, setEditNotes]       = useState('');
+  const [editRemarks, setEditRemarks]   = useState('');
+  const [savingEdit, setSavingEdit]     = useState(false);
 
   // Add item form
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1876,16 +1882,28 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
 
   function startEdit(item: BomItem) {
     setEditingId(item._id);
-    setEditRate(String(item.rateInr));
+    setEditTag(item.tagNumber);
+    setEditName(item.productName);
     setEditQty(String(item.quantity));
+    setEditUnit(item.quantityUnit);
+    setEditMoc(item.mocType);
+    setEditRate(String(item.rateInr));
+    setEditNotes(item.notes);
+    setEditRemarks(item.remarks);
   }
 
   async function handleSaveEdit(itemId: string) {
     setSavingEdit(true);
     try {
       const result = await api.stage7.updateItem(inquiry.id, itemId, {
-        rateInr: parseFloat(editRate),
-        quantity: parseFloat(editQty),
+        tagNumber:    editTag.trim(),
+        productName:  editName.trim(),
+        quantity:     parseFloat(editQty),
+        quantityUnit: editUnit.trim(),
+        mocType:      editMoc.trim(),
+        rateInr:      parseFloat(editRate),
+        notes:        editNotes.trim(),
+        remarks:      editRemarks.trim(),
       });
       setData(result);
       setEditingId(null);
@@ -1984,7 +2002,7 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-gray-200">
-                {['#', 'TAG', 'Item Description', 'Qty', 'Unit', 'Unit Rate (INR)', 'Total (INR)', 'AI Est.', 'Actions'].map(
+                {['#', 'TAG', 'Item Description', 'Qty', 'Unit', 'MOC/Type', 'Unit Rate (INR)', 'Total (INR)', 'Notes', 'Remarks', 'AI Est.', 'Actions'].map(
                   h => (
                     <th
                       key={h}
@@ -2002,8 +2020,30 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
                 return (
                   <tr key={item._id} className="border-b border-gray-100 hover:bg-gray-50 align-top">
                     <td className="py-2.5 pr-3 text-sm text-gray-400">{i + 1}</td>
-                    <td className="py-2.5 pr-3 font-mono text-xs text-gray-600">{item.tagNumber || '—'}</td>
-                    <td className="py-2.5 pr-3 text-sm text-gray-800">{item.productName}</td>
+                    <td className="py-2.5 pr-3 font-mono text-xs text-gray-600">
+                      {isEditing ? (
+                        <input
+                          className="w-20 border border-gray-300 rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          value={editTag}
+                          onChange={e => setEditTag(e.target.value)}
+                          placeholder="TAG"
+                        />
+                      ) : (
+                        item.tagNumber || '—'
+                      )}
+                    </td>
+                    <td className="py-2.5 pr-3 text-sm text-gray-800">
+                      {isEditing ? (
+                        <input
+                          className="w-40 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          placeholder="Item description"
+                        />
+                      ) : (
+                        item.productName
+                      )}
+                    </td>
                     <td className="py-2.5 pr-3 text-sm text-gray-700">
                       {isEditing ? (
                         <input
@@ -2017,7 +2057,30 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
                         item.quantity
                       )}
                     </td>
-                    <td className="py-2.5 pr-3 text-sm text-gray-600">{item.quantityUnit}</td>
+                    <td className="py-2.5 pr-3 text-sm text-gray-600">
+                      {isEditing ? (
+                        <input
+                          className="w-16 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          value={editUnit}
+                          onChange={e => setEditUnit(e.target.value)}
+                          placeholder="nos"
+                        />
+                      ) : (
+                        item.quantityUnit
+                      )}
+                    </td>
+                    <td className="py-2.5 pr-3 text-sm text-gray-600">
+                      {isEditing ? (
+                        <input
+                          className="w-24 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          value={editMoc}
+                          onChange={e => setEditMoc(e.target.value)}
+                          placeholder="e.g. SS 316L"
+                        />
+                      ) : (
+                        item.mocType
+                      )}
+                    </td>
                     <td className="py-2.5 pr-3 text-sm text-gray-700">
                       {isEditing ? (
                         <input
@@ -2033,6 +2096,30 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
                     </td>
                     <td className="py-2.5 pr-3 text-sm font-medium text-gray-900">
                       {formatINR(item.totalInr)}
+                    </td>
+                    <td className="py-2.5 pr-3 text-sm text-gray-600 max-w-[140px]">
+                      {isEditing ? (
+                        <input
+                          className="w-32 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          value={editNotes}
+                          onChange={e => setEditNotes(e.target.value)}
+                          placeholder="Notes"
+                        />
+                      ) : (
+                        <span className="line-clamp-2">{item.notes || '—'}</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 pr-3 text-sm text-gray-600 max-w-[140px]">
+                      {isEditing ? (
+                        <input
+                          className="w-32 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          value={editRemarks}
+                          onChange={e => setEditRemarks(e.target.value)}
+                          placeholder="Remarks"
+                        />
+                      ) : (
+                        <span className="line-clamp-2">{item.remarks || '—'}</span>
+                      )}
                     </td>
                     <td className="py-2.5 pr-3">
                       <div className="flex flex-col gap-1">

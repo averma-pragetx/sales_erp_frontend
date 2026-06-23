@@ -213,6 +213,7 @@ export interface ApiStage6 {
 // Stage 7
 export interface BomItem {
   _id: string;
+  mocType: string;
   tagNumber: string;
   productName: string;
   quantity: number;
@@ -223,6 +224,7 @@ export interface BomItem {
   rationale: string;
   confidence: string;
   notes: string;
+  remarks: string;
 }
 
 export interface ApiStage7 {
@@ -390,7 +392,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(item),
       }),
-    updateItem: (inquiryId: string, itemId: string, data: { rateInr?: number; quantity?: number; quantityUnit?: string; notes?: string }) =>
+    updateItem: (inquiryId: string, itemId: string, data: { tagNumber?: string; productName?: string; quantity?: number; quantityUnit?: string; rateInr?: number; mocType?: string; notes?: string; remarks?: string }) =>
       request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}/items/${itemId}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
