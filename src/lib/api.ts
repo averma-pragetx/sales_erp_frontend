@@ -286,6 +286,11 @@ export const api = {
       }),
     delete: (id: string) =>
       request<{ message: string }>(`/api/inquiries/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    kanbanMove: (id: string, cluster: string) =>
+      request<ApiInquiry>(`/api/inquiries/${encodeURIComponent(id)}/kanban`, {
+        method: 'PATCH',
+        body: JSON.stringify({ cluster }),
+      }),
   },
 
   documents: {
