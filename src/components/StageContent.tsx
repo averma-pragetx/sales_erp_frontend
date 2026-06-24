@@ -1297,6 +1297,24 @@ function Stage4Content({ inquiry, documents, completedUpTo, onRefresh }: Stage4C
 
   const status = stage4?.status ?? 'pending';
 
+  const fmtSide = (s: { fluid?: string; operatingPressureBarg?: number; operatingTempC?: number; material?: string } | undefined) => {
+    if (!s) return '—';
+    const parts = [
+      s.fluid || '',
+      s.operatingPressureBarg ? `${s.operatingPressureBarg} barg` : '',
+      s.operatingTempC ? `${s.operatingTempC}°C` : '',
+      s.material || '',
+    ].filter(Boolean);
+    return parts.length ? parts.join(' · ') : '—';
+  };
+
+  const fmtDim = (odMm: number, lMm: number) => {
+    if (!odMm && !lMm) return '—';
+    return [odMm ? `⌀${odMm}` : '', lMm ? `L${lMm}` : ''].filter(Boolean).join(' × ') + ' mm';
+  };
+
+  const meta = stage4?.extractionMeta;
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
@@ -1344,52 +1362,71 @@ function Stage4Content({ inquiry, documents, completedUpTo, onRefresh }: Stage4C
         <p className="text-red-500 text-sm">{stage4?.error ?? 'Extraction failed.'}</p>
       )}
 
+      {status === 'done' && meta && (
+        <div className="flex flex-wrap gap-4 mb-4 text-sm">
+          <span className="text-gray-500">Tags: <strong className="text-gray-800">{meta.totalTagsFound}</strong></span>
+          <span className="text-gray-500">Units: <strong className="text-gray-800">{meta.totalUnits}</strong></span>
+          <span className="text-gray-500">Total wt: <strong className="text-gray-800">{meta.totalFabricationWeightT ? `${meta.totalFabricationWeightT} t` : '—'}</strong></span>
+          {meta.sourceDocuments.length > 0 && (
+            <span className="text-gray-400 text-xs">{meta.sourceDocuments.join(', ')}</span>
+          )}
+        </div>
+      )}
+
       {status === 'done' && stage4 && stage4.tags.length > 0 && (
         <div>
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200">
-                {['#', 'TAG No.', 'Product Name', 'Dimensions', 'Wt/Unit', 'Qty', 'Missing Fields'].map(h => (
-                  <th
-                    key={h}
-                    className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-2 pr-3"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {stage4.tags.map((t, i) => (
-                <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-2 pr-3 text-sm text-gray-400">{i + 1}</td>
-                  <td className="py-2 pr-3 font-mono text-xs text-gray-700 font-medium">
-                    {t.tagNumber}
-                  </td>
-                  <td className="py-2 pr-3 text-sm text-gray-800">{t.productName}</td>
-                  <td className="py-2 pr-3 text-sm text-gray-600">{t.dimensions || '—'}</td>
-                  <td className="py-2 pr-3 text-sm text-gray-600">{t.weightPerUnit || '—'}</td>
-                  <td className="py-2 pr-3 text-sm text-gray-700">{t.quantity}</td>
-                  <td className="py-2">
-                    <div className="flex flex-wrap gap-1">
-                      {t.missingFields.map(f => (
-                        <span
-                          key={f}
-                          className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium"
-                        >
-                          {f}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  {['#', 'Tag', 'Service', 'TEMA', 'Shell ⌀ × L', 'Shell-side', 'Tube-side', 'Wt/unit (t)', 'Nos', 'DS Ref'].map(h => (
+                    <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-2 pr-3 whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {stage4.extractionNotes && (
-            <p className="text-sm italic text-gray-500 mt-3">{stage4.extractionNotes}</p>
-          )}
+              </thead>
+              <tbody>
+                {stage4.tags.map((t, i) => (
+                  <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 align-top">
+                    <td className="py-2.5 pr-3 text-sm text-gray-400">{i + 1}</td>
+                    <td className="py-2.5 pr-3 font-mono text-xs font-semibold text-gray-800 whitespace-nowrap">
+                      {t.tagNumber || '—'}
+                    </td>
+                    <td className="py-2.5 pr-3 text-sm text-gray-800 max-w-[180px]">
+                      {t.service || '—'}
+                    </td>
+                    <td className="py-2.5 pr-3 text-xs font-mono font-semibold text-indigo-700 whitespace-nowrap">
+                      {t.temaType || '—'}
+                    </td>
+                    <td className="py-2.5 pr-3 text-xs text-gray-600 whitespace-nowrap">
+                      {fmtDim(t.shellOdMm, t.tubeLengthMm)}
+                    </td>
+                    <td className="py-2.5 pr-3 text-xs text-gray-600 max-w-[160px]">
+                      {fmtSide(t.shellSide)}
+                    </td>
+                    <td className="py-2.5 pr-3 text-xs text-gray-600 max-w-[160px]">
+                      {fmtSide(t.tubeSide)}
+                    </td>
+                    <td className="py-2.5 pr-3 text-sm text-gray-700 whitespace-nowrap">
+                      {t.weightPerUnitT ? `${t.weightPerUnitT} t` : '—'}
+                    </td>
+                    <td className="py-2.5 pr-3 text-sm text-gray-700 text-center">
+                      {t.nos || '—'}
+                    </td>
+                    <td className="py-2.5 pr-3 text-xs font-mono text-gray-600 whitespace-nowrap">
+                      {t.datasheetRef ? (
+                        <span>
+                          {t.datasheetRef}
+                          {t.datasheetRev && <span className="text-gray-400 ml-1">{t.datasheetRev}</span>}
+                        </span>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

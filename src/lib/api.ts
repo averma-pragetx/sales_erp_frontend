@@ -153,14 +153,43 @@ export interface ApiStage3 {
 }
 
 // Stage 4
+export interface ShellTubeSide {
+  fluid:                 string;
+  operatingPressureBarg: number;
+  designPressureBarg:    number;
+  operatingTempC:        number;
+  designTempC:           number;
+  material:              string;
+}
+
 export interface TagItem {
-  tagNumber: string;
-  productName: string;
-  dimensions: string;
-  weightPerUnit: string;
-  quantity: string;
-  notes: string;
-  missingFields: string[];
+  tagNumber:       string;
+  service:         string;
+  temaType:        string;
+  shellOdMm:       number;
+  tubeLengthMm:    number;
+  nos:             number;
+  shellSide:       ShellTubeSide;
+  tubeSide:        ShellTubeSide;
+  weightPerUnitT:  number;
+  totalWeightT:    number;
+  datasheetRef:    string;
+  datasheetRev:    string;
+  ltcs:            boolean;
+  ibr:             boolean;
+  pwht:            boolean;
+  ndeRequirements: string[];
+  deviations:      string[];
+  openItems:       string[];
+  specialNotes:    string[];
+}
+
+export interface ExtractionMeta {
+  sourceDocuments:         string[];
+  totalTagsFound:          number;
+  totalUnits:              number;
+  ltcsItemCount:           number;
+  totalFabricationWeightT: number;
 }
 
 export interface ApiStage4 {
@@ -170,6 +199,7 @@ export interface ApiStage4 {
   status: 'pending' | 'extracting' | 'done' | 'failed';
   error?: string;
   tags: TagItem[];
+  extractionMeta?: ExtractionMeta;
   extractionNotes: string;
   extractedAt?: string;
 }
