@@ -205,9 +205,43 @@ export interface ApiStage4 {
 }
 
 // Stage 5
+export interface ComplianceMeta {
+  tclDocumentRef:       string;
+  tclRevision:          string;
+  totalComplianceItems: number;
+  compliantCount:       number;
+  deviationCount:       number;
+  openUnderReviewCount: number;
+  blockerCount:         number;
+  categories:           string[];
+}
+
+export interface ComplianceItem {
+  clauseId:            string;
+  sourceRef:           string;
+  topic:               string;
+  category:            string;
+  rfqBuyerRequirement: string;
+  oswalStandOffer:     string;
+  impact:              string;
+  status:              string;
+  owner:               string;
+  compliantFlag:       boolean;
+  deviationFlag:       boolean;
+  blockerFlag:         boolean;
+  openFlag:            boolean;
+  statusOverride:      string | null;
+  ownerOverride:       string | null;
+  remarks:             string;
+}
+
 export interface ApiStage5 {
-  inquiryId: string;
-  checkedItems: boolean[];
+  inquiryId:        string;
+  status:           'pending' | 'processing' | 'done' | 'failed';
+  error?:           string;
+  complianceMeta:   ComplianceMeta;
+  complianceMatrix: ComplianceItem[];
+  analyzedAt?:      string;
 }
 
 // Stage 6
@@ -241,29 +275,79 @@ export interface ApiStage6 {
 }
 
 // Stage 7
-export interface BomItem {
-  _id: string;
-  mocType: string;
-  tagNumber: string;
-  productName: string;
-  quantity: number;
-  quantityUnit: string;
-  rateInr: number;
-  totalInr: number;
-  aiEstimated: boolean;
-  rationale: string;
-  confidence: string;
-  notes: string;
-  remarks: string;
+export interface BomComponent {
+  srNo:       string;
+  component:  string;
+  applicable: string;
+  moc:        string | null;
+  mocSource:  string;
+  mocFlag:    string | null;
+  typeDetail: string | null;
+  remarks:    string;
+  weightKg:   number | null;
+  quantity:   string;
+  unit:       string;
+}
+
+export interface NozzleEntry {
+  mark:        string;
+  sizeNps:     string;
+  asmeClass:   string;
+  schedule:    string;
+  facing:      string;
+  designation: string;
+  mocNeck:     string | null;
+  mocFlange:   string | null;
+  mocFlag:     string | null;
+}
+
+export interface EquipmentBom {
+  tagNo:                     string;
+  service:                   string;
+  temaClass:                 string;
+  exchangerType:             string;
+  sizeIdMm:                  number;
+  sizeSlMm:                  number;
+  noOfShells:                number;
+  noOfPassesShell:           number;
+  noOfPassesTube:            number;
+  designPressureShell:       string;
+  designPressureTube:        string;
+  designTempShellC:          number;
+  designTempTubeC:           number;
+  fluidShell:                string;
+  fluidTube:                 string;
+  corrosionAllowanceShellMm: number;
+  corrosionAllowanceTubeMm:  number;
+  stressRelieving:           string;
+  radiography:               string;
+  bundleWeightKg:            number | null;
+  emptyWeightKg:             number | null;
+  fullWaterWeightKg:         number | null;
+  deletedFromScope:          boolean;
+  ibrApplicable:             boolean;
+  hydrogenService:           boolean;
+  bom:                       BomComponent[];
+  nozzleSchedule:            NozzleEntry[];
+}
+
+export interface ProjectInfo {
+  name:       string;
+  jobNo:      string;
+  client:     string;
+  consultant: string;
+  prNumber:   string;
+  revision:   string;
+  date:       string;
 }
 
 export interface ApiStage7 {
-  inquiryId: string;
-  status: 'pending' | 'estimating' | 'done' | 'failed';
-  error?: string;
-  items: BomItem[];
-  grandTotalInr: number;
-  estimatedAt?: string;
+  inquiryId:   string;
+  status:      'pending' | 'processing' | 'done' | 'failed';
+  error?:      string;
+  projectInfo: ProjectInfo;
+  equipment:   EquipmentBom[];
+  extractedAt?: string;
 }
 
 // Stage 8
@@ -393,10 +477,12 @@ export const api = {
   stage5: {
     get: (inquiryId: string) =>
       request<ApiStage5>(`/api/stage5/${encodeURIComponent(inquiryId)}`),
-    update: (inquiryId: string, checkedItems: boolean[]) =>
-      request<ApiStage5>(`/api/stage5/${encodeURIComponent(inquiryId)}`, {
+    analyse: (inquiryId: string) =>
+      request<ApiStage5>(`/api/stage5/${encodeURIComponent(inquiryId)}/analyse`, { method: 'POST' }),
+    updateItem: (inquiryId: string, itemIndex: number, data: { statusOverride?: string | null; ownerOverride?: string | null; remarks?: string }) =>
+      request<ApiStage5>(`/api/stage5/${encodeURIComponent(inquiryId)}/items/${itemIndex}`, {
         method: 'PATCH',
-        body: JSON.stringify({ checkedItems }),
+        body: JSON.stringify(data),
       }),
   },
 
@@ -420,20 +506,8 @@ export const api = {
   stage7: {
     get: (inquiryId: string) =>
       request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}`),
-    estimate: (inquiryId: string) =>
-      request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}/estimate`, { method: 'POST' }),
-    addItem: (inquiryId: string, item: { tagNumber?: string; productName: string; quantity: number; quantityUnit?: string; rateInr: number }) =>
-      request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}/items`, {
-        method: 'POST',
-        body: JSON.stringify(item),
-      }),
-    updateItem: (inquiryId: string, itemId: string, data: { tagNumber?: string; productName?: string; quantity?: number; quantityUnit?: string; rateInr?: number; mocType?: string; notes?: string; remarks?: string }) =>
-      request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}/items/${itemId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      }),
-    deleteItem: (inquiryId: string, itemId: string) =>
-      request<{ message: string }>(`/api/stage7/${encodeURIComponent(inquiryId)}/items/${itemId}`, { method: 'DELETE' }),
+    extract: (inquiryId: string) =>
+      request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}/extract`, { method: 'POST' }),
   },
 
   stage8: {

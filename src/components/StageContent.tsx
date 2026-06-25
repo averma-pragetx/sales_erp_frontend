@@ -11,10 +11,14 @@ import type {
   ApiSectionsByDoc,
   ApiStage3,
   ApiStage4,
+  ApiStage5,
   ApiStage6,
   ApiStage7,
   ApiStage8,
-  BomItem,
+  BomComponent,
+  ComplianceItem,
+  EquipmentBom,
+  NozzleEntry,
   GapItem,
   Stage3EmailDraft,
   Stage3GapAnalysis,
@@ -24,9 +28,6 @@ import { api } from '../lib/api';
 
 // ─── Shared helpers ────────────────────────────────────────────────────────────
 
-function formatINR(n: number): string {
-  return '₹' + new Intl.NumberFormat('en-IN').format(Math.round(n));
-}
 
 async function markStageComplete(
   inquiryId: string,
@@ -1450,87 +1451,327 @@ function Stage4Content({ inquiry, documents, completedUpTo, onRefresh }: Stage4C
 // ─── Stage 5: Tech Compliance Review ──────────────────────────────────────────
 interface Stage5ContentProps {
   inquiry: Inquiry;
+  completedUpTo: number;
   onRefresh: () => void;
 }
 
-const TECH_CHECKLIST = [
-  'Design pressure verified',
-  'Material specifications reviewed',
-  'Applicable codes confirmed',
-  'GA drawings reviewed',
-  'Nozzle schedule verified',
-];
+const COMPLIANCE_STATUS_STYLES: Record<string, string> = {
+  Compliant:      'bg-green-100 text-green-700 border-green-200',
+  Deviation:      'bg-amber-100 text-amber-700 border-amber-200',
+  Blocker:        'bg-red-100 text-red-700 border-red-200',
+  'Under review': 'bg-gray-100 text-gray-600 border-gray-200',
+};
 
-function Stage5Content({ inquiry, onRefresh }: Stage5ContentProps) {
-  const [checked, setChecked] = useState<boolean[]>(new Array(TECH_CHECKLIST.length).fill(false));
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+const OWNER_OPTIONS = ['Logistics', 'Commercial', 'Estimation', 'VP-Sales', 'Engineering'];
+const STATUS_OPTIONS = ['Compliant', 'Deviation', 'Blocker', 'Under review'];
 
-  useEffect(() => {
-    api.stage5.get(inquiry.id)
-      .then(data => {
-        const loaded = new Array(TECH_CHECKLIST.length).fill(false);
-        data.checkedItems.forEach((v, i) => { if (i < loaded.length) loaded[i] = v; });
-        setChecked(loaded);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [inquiry.id]);
+function StatusPill({ status, override }: { status: string; override?: string | null }) {
+  const display = override ?? status;
+  const base = COMPLIANCE_STATUS_STYLES[display] ?? 'bg-gray-100 text-gray-600 border-gray-200';
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${base}`}>
+      {override && <span className="opacity-60 text-[8px]">★</span>}
+      {display}
+    </span>
+  );
+}
 
-  async function toggleItem(idx: number) {
-    const next = checked.map((v, i) => (i === idx ? !v : v));
-    setChecked(next);
-    try {
-      await api.stage5.update(inquiry.id, next);
-    } catch { /* silent — local state already updated */ }
+function ComplianceRow({
+  item, index, onUpdate,
+}: {
+  item: ComplianceItem;
+  index: number;
+  onUpdate: (index: number, data: { statusOverride?: string | null; ownerOverride?: string | null; remarks?: string }) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [editStatus, setEditStatus]   = useState(item.statusOverride ?? '');
+  const [editOwner, setEditOwner]     = useState(item.ownerOverride ?? '');
+  const [editRemarks, setEditRemarks] = useState(item.remarks ?? '');
+  const [saving, setSaving] = useState(false);
+
+  const effectiveStatus = item.statusOverride ?? item.status;
+  const effectiveOwner  = item.ownerOverride  ?? item.owner;
+  const hasOverride     = !!(item.statusOverride || item.ownerOverride);
+
+  async function handleSave() {
+    setSaving(true);
+    await onUpdate(index, {
+      statusOverride: editStatus || null,
+      ownerOverride:  editOwner  || null,
+      remarks:        editRemarks,
+    });
+    setSaving(false);
+    setExpanded(false);
   }
 
-  async function handleMarkComplete() {
-    setBusy(true);
+  return (
+    <tr className={`border-b border-gray-100 align-top ${effectiveStatus === 'Blocker' ? 'bg-red-50/40' : effectiveStatus === 'Deviation' ? 'bg-amber-50/30' : ''}`}>
+      <td className="py-2.5 pr-2 text-[11px] font-mono text-gray-400 whitespace-nowrap">{item.clauseId}</td>
+      <td className="py-2.5 pr-2 text-[11px] text-gray-500 whitespace-nowrap">{item.sourceRef || '—'}</td>
+      <td className="py-2.5 pr-3 text-sm font-medium text-gray-800">{item.topic}</td>
+      <td className="py-2.5 pr-2">
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.category === 'Commercial' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
+          {item.category}
+        </span>
+      </td>
+      <td className="py-2.5 pr-3 text-xs text-gray-600 max-w-[200px]">
+        <span className="line-clamp-3">{item.rfqBuyerRequirement}</span>
+      </td>
+      <td className="py-2.5 pr-3 text-xs text-gray-600 max-w-[180px]">
+        <span className="line-clamp-3">{item.oswalStandOffer}</span>
+      </td>
+      <td className="py-2.5 pr-3 text-xs text-gray-500 max-w-[160px]">
+        <span className="line-clamp-2 italic">{item.impact}</span>
+      </td>
+      <td className="py-2.5 pr-2 whitespace-nowrap">
+        <StatusPill status={item.status} override={item.statusOverride} />
+      </td>
+      <td className="py-2.5 pr-2 text-xs text-gray-600 whitespace-nowrap">{effectiveOwner || '—'}</td>
+      <td className="py-2.5">
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+            hasOverride || item.remarks
+              ? 'border-indigo-200 text-indigo-600 bg-indigo-50'
+              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          {expanded ? '✕' : 'Edit'}
+        </button>
+      </td>
+
+      {expanded && (
+        <td colSpan={10} className="py-0">
+          <div className="bg-gray-50 border-t border-b border-gray-200 px-3 py-3 flex flex-wrap gap-3 items-end">
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Status override</label>
+              <select
+                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                value={editStatus}
+                onChange={e => setEditStatus(e.target.value)}
+              >
+                <option value="">(keep AI: {item.status})</option>
+                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Owner override</label>
+              <select
+                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                value={editOwner}
+                onChange={e => setEditOwner(e.target.value)}
+              >
+                <option value="">(keep AI: {item.owner})</option>
+                {OWNER_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Remarks</label>
+              <input
+                className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                value={editRemarks}
+                onChange={e => setEditRemarks(e.target.value)}
+                placeholder="Add your remarks…"
+              />
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-3 py-1 text-xs font-semibold text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {saving ? '…' : 'Save'}
+            </button>
+            <button
+              onClick={() => setExpanded(false)}
+              className="px-3 py-1 text-xs text-gray-500 border border-gray-200 rounded hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+          </div>
+        </td>
+      )}
+    </tr>
+  );
+}
+
+function Stage5Content({ inquiry, completedUpTo, onRefresh }: Stage5ContentProps) {
+  const [data, setData]           = useState<ApiStage5 | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [analysing, setAnalysing] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
+  const [err, setErr]             = useState<string | null>(null);
+  const [catFilter, setCatFilter]     = useState<'All' | 'Commercial' | 'Technical'>('All');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api.stage5.get(inquiry.id)
+      .then(d => { if (!cancelled) setData(d as ApiStage5); })
+      .catch(e => { if (!cancelled) setErr(String(e)); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [inquiry.id]);
+
+  async function handleAnalyse() {
+    setAnalysing(true);
     setErr(null);
     try {
-      await markStageComplete(inquiry.id, 5, onRefresh);
+      const result = await api.stage5.analyse(inquiry.id);
+      setData(result);
     } catch (e) {
-      setErr(String(e));
+      const msg = String(e);
+      if (msg.includes('Stage 2') || msg.includes('sections')) {
+        setErr('No extracted sections found. Run Stage 2 document review first to extract RFQ content.');
+      } else {
+        setErr(msg);
+      }
     } finally {
-      setBusy(false);
+      setAnalysing(false);
     }
   }
 
-  const allChecked = checked.every(Boolean);
+  async function handleUpdateItem(index: number, patch: { statusOverride?: string | null; ownerOverride?: string | null; remarks?: string }) {
+    try {
+      const result = await api.stage5.updateItem(inquiry.id, index, patch);
+      setData(result);
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
 
   if (loading) return <p className="text-sm text-gray-400 animate-pulse">Loading…</p>;
 
+  const status   = data?.status ?? 'pending';
+  const meta     = data?.complianceMeta;
+  const matrix   = data?.complianceMatrix ?? [];
+
+  const filtered = matrix.filter(item => {
+    const eff = item.statusOverride ?? item.status;
+    const catOk    = catFilter === 'All' || item.category === catFilter;
+    const statusOk = statusFilter === 'All' || eff === statusFilter;
+    return catOk && statusOk;
+  });
+
   return (
     <div>
-      <p className="text-sm text-gray-600 mb-4">{STAGES[4].description}</p>
-      <div className="space-y-2 mb-5">
-        {TECH_CHECKLIST.map((item, idx) => (
-          <label key={item} className="flex items-center gap-2.5 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={checked[idx]}
-              onChange={() => toggleItem(idx)}
-              className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
-            />
-            <span className={`text-sm ${checked[idx] ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-              {item}
-            </span>
-          </label>
-        ))}
-      </div>
-
-      {allChecked && (
+      {/* Action bar */}
+      <div className="flex items-center gap-3 mb-5">
         <button
-          onClick={handleMarkComplete}
-          disabled={busy}
+          onClick={handleAnalyse}
+          disabled={analysing}
           className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
         >
-          {busy ? 'Saving…' : '✓ Mark Complete'}
+          {analysing ? 'Analysing…' : status === 'done' ? '↺ Re-analyse' : '✦ Analyse Compliance'}
         </button>
+        {analysing && (
+          <span className="text-sm text-indigo-600 animate-pulse">Reading all RFQ sections with Gemini…</span>
+        )}
+        {status === 'done' && meta && (
+          <span className="text-xs text-gray-500">
+            {meta.totalComplianceItems} clauses extracted
+          </span>
+        )}
+        {status === 'failed' && (
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">failed</span>
+        )}
+      </div>
+
+      {err && <p className="text-red-500 text-sm mb-4">{err}</p>}
+      {data?.error && status === 'failed' && (
+        <p className="text-red-400 text-xs mb-4 font-mono">{data.error}</p>
       )}
-      {err && <p className="text-red-500 text-sm mt-2">{err}</p>}
+
+      {/* Summary stats */}
+      {meta && meta.totalComplianceItems > 0 && (
+        <div className="grid grid-cols-4 gap-3 mb-5">
+          {[
+            { label: 'Compliant',     count: meta.compliantCount,       style: 'bg-green-50 border-green-200 text-green-700' },
+            { label: 'Deviation',     count: meta.deviationCount,       style: 'bg-amber-50 border-amber-200 text-amber-700' },
+            { label: 'Blocker',       count: meta.blockerCount,         style: 'bg-red-50 border-red-200 text-red-700' },
+            { label: 'Under review',  count: meta.openUnderReviewCount, style: 'bg-gray-50 border-gray-200 text-gray-600' },
+          ].map(s => (
+            <button
+              key={s.label}
+              onClick={() => setStatusFilter(prev => prev === s.label ? 'All' : s.label)}
+              className={`rounded-lg border p-3 text-left transition-all ${s.style} ${statusFilter === s.label ? 'ring-2 ring-offset-1 ring-indigo-400' : 'hover:opacity-80'}`}
+            >
+              <div className="text-2xl font-bold">{s.count}</div>
+              <div className="text-xs font-semibold mt-0.5">{s.label}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Filters */}
+      {matrix.length > 0 && (
+        <div className="flex gap-2 mb-4 flex-wrap">
+          {(['All', 'Commercial', 'Technical'] as const).map(c => (
+            <button
+              key={c}
+              onClick={() => setCatFilter(c)}
+              className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${catFilter === c ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+            >
+              {c}
+            </button>
+          ))}
+          {statusFilter !== 'All' && (
+            <button
+              onClick={() => setStatusFilter('All')}
+              className="px-3 py-1 text-xs font-semibold rounded-full border border-gray-300 text-gray-500 hover:bg-gray-50"
+            >
+              ✕ Clear filter
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Compliance matrix table */}
+      {filtered.length > 0 && (
+        <div className="overflow-x-auto mb-4">
+          <table className="w-full text-sm border-collapse min-w-[900px]">
+            <thead>
+              <tr className="border-b-2 border-gray-200">
+                {['#', 'Source', 'Topic', 'Cat.', 'RFQ Requirement', 'Oswal Stand', 'Impact', 'Status', 'Owner', ''].map(h => (
+                  <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-2 pr-3 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((item, i) => (
+                <ComplianceRow
+                  key={item.clauseId || i}
+                  item={item}
+                  index={matrix.indexOf(item)}
+                  onUpdate={handleUpdateItem}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {status === 'done' && filtered.length === 0 && (
+        <p className="text-sm text-gray-400">No items match the current filter.</p>
+      )}
+
+      {status === 'done' && completedUpTo < 5 && matrix.length > 0 && (
+        <div className="mt-6 pt-4 border-t border-gray-100 flex items-center gap-3">
+          <button
+            disabled={advancing}
+            onClick={async () => {
+              setAdvancing(true);
+              try { await markStageComplete(inquiry.id, 5, onRefresh); }
+              catch (e) { setErr(String(e)); }
+              finally { setAdvancing(false); }
+            }}
+            className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-50"
+          >
+            {advancing ? 'Saving…' : '✓ Mark Stage 5 Complete'}
+          </button>
+          {advancing && <span className="text-sm text-gray-400 animate-pulse">Saving compliance review to database…</span>}
+        </div>
+      )}
     </div>
   );
 }
@@ -1853,472 +2094,213 @@ function Stage6Content({ inquiry, completedUpTo, onRefresh }: Stage6ContentProps
   );
 }
 
-// ─── Stage 7: Cost Estimate / BOM ──────────────────────────────────────────────
+// ─── Stage 7: BOM Extraction ───────────────────────────────────────────────────
 interface Stage7ContentProps {
   inquiry: Inquiry;
   completedUpTo: number;
   onRefresh: () => void;
 }
 
+function mocSourceBadge(src: string) {
+  if (src === 'datasheet') return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700">DS</span>;
+  if (src === 'inferred')  return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">INF</span>;
+  return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">NF</span>;
+}
+
+function EquipmentCard({ eq, index }: { eq: EquipmentBom; index: number }) {
+  const [showBom, setShowBom]         = useState(true);
+  const [showNozzles, setShowNozzles] = useState(false);
+
+  const flags = [
+    eq.ibrApplicable  && <span key="ibr" className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">IBR</span>,
+    eq.hydrogenService && <span key="h2"  className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">H₂</span>,
+    eq.deletedFromScope && <span key="del" className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">DELETED</span>,
+  ].filter(Boolean);
+
+  const warnCount = eq.bom.filter(c => c.mocFlag && c.applicable !== 'No').length;
+
+  return (
+    <div className={`border rounded-lg mb-4 ${eq.deletedFromScope ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200 bg-white'}`}>
+      <div className="flex items-start gap-3 px-4 py-3 border-b border-gray-100">
+        <span className="text-xs font-bold text-gray-400 mt-0.5 w-5 shrink-0">{index + 1}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-mono text-sm font-bold text-gray-900">{eq.tagNo || '—'}</span>
+            {eq.temaClass    && <span className="text-xs text-gray-500 font-medium">{eq.temaClass}</span>}
+            {eq.exchangerType && <span className="text-xs text-gray-500">{eq.exchangerType}</span>}
+            {flags}
+          </div>
+          <p className="text-sm text-gray-700 mb-2">{eq.service || '—'}</p>
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500">
+            {eq.sizeIdMm > 0         && <span>⌀{eq.sizeIdMm} mm ID</span>}
+            {eq.sizeSlMm > 0         && <span>L {eq.sizeSlMm} mm</span>}
+            {eq.noOfShells > 1       && <span>{eq.noOfShells} shells</span>}
+            {eq.designPressureShell  && <span>Shell DP {eq.designPressureShell}</span>}
+            {eq.designPressureTube   && <span>Tube DP {eq.designPressureTube}</span>}
+            {eq.designTempShellC > 0 && <span>Shell T {eq.designTempShellC}°C</span>}
+            {eq.designTempTubeC  > 0 && <span>Tube T {eq.designTempTubeC}°C</span>}
+            {eq.fluidShell           && <span>Shell: {eq.fluidShell}</span>}
+            {eq.fluidTube            && <span>Tube: {eq.fluidTube}</span>}
+            {eq.emptyWeightKg != null && <span>Empty wt: {eq.emptyWeightKg} kg</span>}
+          </div>
+          {warnCount > 0 && (
+            <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+              {warnCount} component{warnCount > 1 ? 's' : ''} with MOC warnings
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="px-4 py-2">
+        <button onClick={() => setShowBom(v => !v)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 mb-2">
+          {showBom ? '▾ Hide BOM' : '▸ Show BOM'} ({eq.bom.length} components)
+        </button>
+        {showBom && eq.bom.length > 0 && (
+          <div className="overflow-x-auto mb-3">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  {['Sr', 'Component', 'Applic.', 'MOC', 'Src', 'Wt (kg)', 'Qty', 'Type / Remarks'].map(h => (
+                    <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-1.5 pr-3 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {eq.bom.map((comp: BomComponent, ci: number) => (
+                  <tr key={ci} className={`border-b border-gray-50 align-top ${comp.applicable === 'No' ? 'opacity-40' : ''}`}>
+                    <td className="py-1.5 pr-3 text-gray-400 font-mono">{comp.srNo || ci + 1}</td>
+                    <td className="py-1.5 pr-3 text-gray-800 font-medium">{comp.component}</td>
+                    <td className="py-1.5 pr-3">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${comp.applicable === 'No' ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700'}`}>{comp.applicable}</span>
+                    </td>
+                    <td className="py-1.5 pr-3 text-gray-700">{comp.moc ?? <span className="text-red-500 font-semibold">—</span>}</td>
+                    <td className="py-1.5 pr-3">{mocSourceBadge(comp.mocSource)}</td>
+                    <td className="py-1.5 pr-3 text-gray-600 font-mono">{comp.weightKg ?? '—'}</td>
+                    <td className="py-1.5 pr-3 text-gray-600">{comp.quantity} {comp.unit}</td>
+                    <td className="py-1.5 pr-3 text-gray-500 max-w-[220px]">
+                      {comp.typeDetail && <span className="text-gray-700 mr-2">{comp.typeDetail}</span>}
+                      {comp.mocFlag    && <span className="text-amber-700 text-[10px]">⚠ {comp.mocFlag}</span>}
+                      {comp.remarks && !comp.mocFlag && <span>{comp.remarks}</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {eq.nozzleSchedule.length > 0 && (
+          <>
+            <button onClick={() => setShowNozzles(v => !v)} className="text-xs font-semibold text-gray-500 hover:text-gray-700 mb-2">
+              {showNozzles ? '▾ Hide Nozzles' : '▸ Show Nozzles'} ({eq.nozzleSchedule.length})
+            </button>
+            {showNozzles && (
+              <div className="overflow-x-auto mb-3">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      {['Mark', 'Size NPS', 'Class', 'Sch', 'Facing', 'Designation', 'MOC Neck', 'MOC Flange'].map(h => (
+                        <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-1.5 pr-3 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {eq.nozzleSchedule.map((n: NozzleEntry, ni: number) => (
+                      <tr key={ni} className="border-b border-gray-50">
+                        <td className="py-1.5 pr-3 font-mono font-bold text-gray-700">{n.mark}</td>
+                        <td className="py-1.5 pr-3 text-gray-700">{n.sizeNps}</td>
+                        <td className="py-1.5 pr-3 text-gray-600">{n.asmeClass}</td>
+                        <td className="py-1.5 pr-3 text-gray-600">{n.schedule}</td>
+                        <td className="py-1.5 pr-3 text-gray-600">{n.facing}</td>
+                        <td className="py-1.5 pr-3 text-gray-700">{n.designation}</td>
+                        <td className="py-1.5 pr-3 text-gray-600">{n.mocNeck ?? <span className="text-red-400">—</span>}{n.mocFlag && <span className="text-amber-600 ml-1 text-[10px]">⚠</span>}</td>
+                        <td className="py-1.5 pr-3 text-gray-600">{n.mocFlange ?? <span className="text-red-400">—</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps) {
-  const [data, setData] = useState<ApiStage7 | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [estimating, setEstimating] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  // Inline edit
-  const [editingId, setEditingId]       = useState<string | null>(null);
-  const [editTag, setEditTag]           = useState('');
-  const [editName, setEditName]         = useState('');
-  const [editQty, setEditQty]           = useState('');
-  const [editUnit, setEditUnit]         = useState('');
-  const [editMoc, setEditMoc]           = useState('');
-  const [editRate, setEditRate]         = useState('');
-  const [editNotes, setEditNotes]       = useState('');
-  const [editRemarks, setEditRemarks]   = useState('');
-  const [savingEdit, setSavingEdit]     = useState(false);
-
-  // Add item form
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [addTag, setAddTag] = useState('');
-  const [addName, setAddName] = useState('');
-  const [addQty, setAddQty] = useState('');
-  const [addUnit, setAddUnit] = useState('');
-  const [addRate, setAddRate] = useState('');
-  const [addingItem, setAddingItem] = useState(false);
-  const [addErr, setAddErr] = useState<string | null>(null);
+  const [data, setData]             = useState<ApiStage7 | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [extracting, setExtracting] = useState(false);
+  const [err, setErr]               = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    api.stage7
-      .get(inquiry.id)
+    api.stage7.get(inquiry.id)
       .then(d => { if (!cancelled) setData(d); })
       .catch(e => { if (!cancelled) setErr(String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [inquiry.id]);
 
-  async function handleEstimate() {
-    setEstimating(true);
+  async function handleExtract() {
+    setExtracting(true);
     setErr(null);
     try {
-      const result = await api.stage7.estimate(inquiry.id);
+      const result = await api.stage7.extract(inquiry.id);
       setData(result);
     } catch (e) {
       const msg = String(e);
-      if (msg.toLowerCase().includes('stage 4')) {
-        setErr('Stage 4 extraction must be completed before generating an AI estimate.');
-      } else {
-        setErr(msg);
-      }
+      setErr(msg.toLowerCase().includes('stage 4')
+        ? 'Stage 4 extraction must be completed first — Stage 7 uses the same document.'
+        : msg);
     } finally {
-      setEstimating(false);
-    }
-  }
-
-  function startEdit(item: BomItem) {
-    setEditingId(item._id);
-    setEditTag(item.tagNumber);
-    setEditName(item.productName);
-    setEditQty(String(item.quantity));
-    setEditUnit(item.quantityUnit);
-    setEditMoc(item.mocType);
-    setEditRate(String(item.rateInr));
-    setEditNotes(item.notes);
-    setEditRemarks(item.remarks);
-  }
-
-  async function handleSaveEdit(itemId: string) {
-    setSavingEdit(true);
-    try {
-      const result = await api.stage7.updateItem(inquiry.id, itemId, {
-        tagNumber:    editTag.trim(),
-        productName:  editName.trim(),
-        quantity:     parseFloat(editQty),
-        quantityUnit: editUnit.trim(),
-        mocType:      editMoc.trim(),
-        rateInr:      parseFloat(editRate),
-        notes:        editNotes.trim(),
-        remarks:      editRemarks.trim(),
-      });
-      setData(result);
-      setEditingId(null);
-    } catch (e) {
-      setErr(String(e));
-    } finally {
-      setSavingEdit(false);
-    }
-  }
-
-  async function handleDeleteItem(itemId: string) {
-    if (!confirm('Remove this item from the BOM?')) return;
-    try {
-      await api.stage7.deleteItem(inquiry.id, itemId);
-      setData(prev =>
-        prev
-          ? {
-              ...prev,
-              items: prev.items.filter(i => i._id !== itemId),
-              grandTotalInr: prev.items
-                .filter(i => i._id !== itemId)
-                .reduce((sum, i) => sum + i.totalInr, 0),
-            }
-          : null,
-      );
-    } catch (e) {
-      setErr(String(e));
-    }
-  }
-
-  async function handleAddItem(e: React.FormEvent) {
-    e.preventDefault();
-    if (!addName.trim() || !addQty || !addRate) {
-      setAddErr('Product Name, Qty, and Rate are required.');
-      return;
-    }
-    setAddingItem(true);
-    setAddErr(null);
-    try {
-      const result = await api.stage7.addItem(inquiry.id, {
-        tagNumber: addTag.trim() || undefined,
-        productName: addName.trim(),
-        quantity: parseFloat(addQty),
-        quantityUnit: addUnit.trim() || undefined,
-        rateInr: parseFloat(addRate),
-      });
-      setData(result);
-      setAddTag(''); setAddName(''); setAddQty(''); setAddUnit(''); setAddRate('');
-      setShowAddForm(false);
-    } catch (e) {
-      setAddErr(String(e));
-    } finally {
-      setAddingItem(false);
+      setExtracting(false);
     }
   }
 
   if (loading) return <p className="text-sm text-gray-400 animate-pulse">Loading…</p>;
 
-  const status = data?.status ?? 'pending';
-
-  const confidencePill = (conf: string) => {
-    const styles: Record<string, string> = {
-      high: 'bg-green-100 text-green-700',
-      medium: 'bg-yellow-100 text-yellow-700',
-      low: 'bg-red-100 text-red-700',
-    };
-    return styles[conf.toLowerCase()] ?? 'bg-gray-100 text-gray-600';
-  };
+  const status    = data?.status ?? 'pending';
+  const proj      = data?.projectInfo;
+  const equipment = data?.equipment ?? [];
 
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
-        <button
-          onClick={handleEstimate}
-          disabled={estimating}
-          className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {estimating ? 'Estimating…' : '✦ Estimate with AI'}
+        <button onClick={handleExtract} disabled={extracting} className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
+          {extracting ? 'Extracting BOM…' : status === 'done' ? '↺ Re-extract BOM' : '✦ Extract BOM'}
         </button>
-        {estimating && (
-          <span className="text-sm text-indigo-600 animate-pulse">
-            Running AI cost estimate…
-          </span>
-        )}
-        {status === 'done' && data && (
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-            done
-          </span>
-        )}
+        {extracting && <span className="text-sm text-indigo-600 animate-pulse">Reading datasheets with Gemini…</span>}
+        {status === 'done' && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">done · {equipment.length} tag{equipment.length !== 1 ? 's' : ''}</span>}
+        {status === 'failed' && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">failed</span>}
       </div>
-
       {err && <p className="text-red-500 text-sm mb-4">{err}</p>}
+      {data?.error && status === 'failed' && <p className="text-red-400 text-xs mb-4 font-mono">{data.error}</p>}
 
-      {data && data.items.length > 0 && (
-        <div className="mb-4 overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200">
-                {['#', 'TAG', 'Item Description', 'Qty', 'Unit', 'MOC/Type', 'Unit Rate (INR)', 'Total (INR)', 'Notes', 'Remarks', 'AI Est.', 'Actions'].map(
-                  h => (
-                    <th
-                      key={h}
-                      className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-2 pr-3"
-                    >
-                      {h}
-                    </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((item, i) => {
-                const isEditing = editingId === item._id;
-                return (
-                  <tr key={item._id} className="border-b border-gray-100 hover:bg-gray-50 align-top">
-                    <td className="py-2.5 pr-3 text-sm text-gray-400">{i + 1}</td>
-                    <td className="py-2.5 pr-3 font-mono text-xs text-gray-600">
-                      {isEditing ? (
-                        <input
-                          className="w-20 border border-gray-300 rounded px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          value={editTag}
-                          onChange={e => setEditTag(e.target.value)}
-                          placeholder="TAG"
-                        />
-                      ) : (
-                        item.tagNumber || '—'
-                      )}
-                    </td>
-                    <td className="py-2.5 pr-3 text-sm text-gray-800">
-                      {isEditing ? (
-                        <input
-                          className="w-40 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          value={editName}
-                          onChange={e => setEditName(e.target.value)}
-                          placeholder="Item description"
-                        />
-                      ) : (
-                        item.productName
-                      )}
-                    </td>
-                    <td className="py-2.5 pr-3 text-sm text-gray-700">
-                      {isEditing ? (
-                        <input
-                          className="w-16 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          value={editQty}
-                          onChange={e => setEditQty(e.target.value)}
-                          type="number"
-                          min="0"
-                        />
-                      ) : (
-                        item.quantity
-                      )}
-                    </td>
-                    <td className="py-2.5 pr-3 text-sm text-gray-600">
-                      {isEditing ? (
-                        <input
-                          className="w-16 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          value={editUnit}
-                          onChange={e => setEditUnit(e.target.value)}
-                          placeholder="nos"
-                        />
-                      ) : (
-                        item.quantityUnit
-                      )}
-                    </td>
-                    <td className="py-2.5 pr-3 text-sm text-gray-600">
-                      {isEditing ? (
-                        <input
-                          className="w-24 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          value={editMoc}
-                          onChange={e => setEditMoc(e.target.value)}
-                          placeholder="e.g. SS 316L"
-                        />
-                      ) : (
-                        item.mocType
-                      )}
-                    </td>
-                    <td className="py-2.5 pr-3 text-sm text-gray-700">
-                      {isEditing ? (
-                        <input
-                          className="w-24 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          value={editRate}
-                          onChange={e => setEditRate(e.target.value)}
-                          type="number"
-                          min="0"
-                        />
-                      ) : (
-                        formatINR(item.rateInr)
-                      )}
-                    </td>
-                    <td className="py-2.5 pr-3 text-sm font-medium text-gray-900">
-                      {formatINR(item.totalInr)}
-                    </td>
-                    <td className="py-2.5 pr-3 text-sm text-gray-600 max-w-[140px]">
-                      {isEditing ? (
-                        <input
-                          className="w-32 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          value={editNotes}
-                          onChange={e => setEditNotes(e.target.value)}
-                          placeholder="Notes"
-                        />
-                      ) : (
-                        <span className="line-clamp-2">{item.notes || '—'}</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 pr-3 text-sm text-gray-600 max-w-[140px]">
-                      {isEditing ? (
-                        <input
-                          className="w-32 border border-gray-300 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          value={editRemarks}
-                          onChange={e => setEditRemarks(e.target.value)}
-                          placeholder="Remarks"
-                        />
-                      ) : (
-                        <span className="line-clamp-2">{item.remarks || '—'}</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 pr-3">
-                      <div className="flex flex-col gap-1">
-                        {item.aiEstimated && (
-                          <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-teal-100 text-teal-700">
-                            AI
-                          </span>
-                        )}
-                        {item.confidence && (
-                          <span
-                            className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${confidencePill(item.confidence)}`}
-                          >
-                            {item.confidence}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-2.5">
-                      {isEditing ? (
-                        <div className="flex flex-col gap-1">
-                          <button
-                            onClick={() => handleSaveEdit(item._id)}
-                            disabled={savingEdit}
-                            className="px-2 py-1 text-xs font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50"
-                          >
-                            {savingEdit ? '…' : 'Save'}
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="px-2 py-1 text-xs font-medium text-gray-600 border border-gray-200 rounded hover:bg-gray-50"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          <button
-                            onClick={() => startEdit(item)}
-                            className="px-2 py-1 text-xs font-medium text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteItem(item._id)}
-                            className="px-2 py-1 text-xs font-medium text-red-500 border border-red-100 rounded hover:bg-red-50"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-              {/* Grand total row */}
-              <tr className="border-t-2 border-gray-300 bg-gray-50">
-                <td colSpan={6} className="py-3 pr-3 text-sm font-bold text-gray-900 text-right">
-                  Grand Total
-                </td>
-                <td className="py-3 pr-3 text-sm font-bold text-gray-900">
-                  {formatINR(data.grandTotalInr)}
-                </td>
-                <td colSpan={2} />
-              </tr>
-            </tbody>
-          </table>
+      {proj && (proj.client || proj.jobNo || proj.prNumber) && (
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 mb-5 px-1">
+          {proj.client     && <span><span className="font-semibold text-gray-700">Client:</span> {proj.client}</span>}
+          {proj.jobNo      && <span><span className="font-semibold text-gray-700">Job No:</span> {proj.jobNo}</span>}
+          {proj.prNumber   && <span><span className="font-semibold text-gray-700">PR No:</span> {proj.prNumber}</span>}
+          {proj.revision   && <span><span className="font-semibold text-gray-700">Rev:</span> {proj.revision}</span>}
+          {proj.consultant && <span><span className="font-semibold text-gray-700">Consultant:</span> {proj.consultant}</span>}
+          {proj.date       && <span><span className="font-semibold text-gray-700">Date:</span> {proj.date}</span>}
         </div>
       )}
+      {equipment.length > 0 && (
+        <div className="flex gap-3 items-center text-xs text-gray-500 mb-4">
+          <span className="font-semibold text-gray-600">MOC source:</span>
+          <span className="flex items-center gap-1">{mocSourceBadge('datasheet')} From datasheet</span>
+          <span className="flex items-center gap-1">{mocSourceBadge('inferred')} Inferred</span>
+          <span className="flex items-center gap-1">{mocSourceBadge('not_found')} Not found</span>
+        </div>
+      )}
+      {equipment.map((eq, i) => <EquipmentCard key={eq.tagNo || i} eq={eq} index={i} />)}
+      {status === 'done' && equipment.length === 0 && <p className="text-sm text-gray-400">No equipment found.</p>}
 
-      {/* Add item form */}
-      <div className="mt-4">
-        <button
-          onClick={() => { setShowAddForm(f => !f); setAddErr(null); }}
-          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-        >
-          {showAddForm ? '✕ Cancel' : '+ Add BOM Item'}
-        </button>
-
-        {showAddForm && (
-          <form
-            onSubmit={handleAddItem}
-            className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-3"
-          >
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              <div>
-                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">
-                  TAG
-                </label>
-                <input
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  value={addTag}
-                  onChange={e => setAddTag(e.target.value)}
-                  placeholder="TAG-101"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">
-                  Product Name *
-                </label>
-                <input
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  value={addName}
-                  onChange={e => setAddName(e.target.value)}
-                  placeholder="Item description"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              <div>
-                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">
-                  Qty *
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  value={addQty}
-                  onChange={e => setAddQty(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">
-                  Unit
-                </label>
-                <input
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  value={addUnit}
-                  onChange={e => setAddUnit(e.target.value)}
-                  placeholder="nos, set…"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold tracking-widests text-gray-400 uppercase block mb-1">
-                  Rate (INR) *
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  value={addRate}
-                  onChange={e => setAddRate(e.target.value)}
-                />
-              </div>
-            </div>
-            {addErr && <p className="text-red-500 text-sm mb-2">{addErr}</p>}
-            <button
-              type="submit"
-              disabled={addingItem}
-              className="px-4 py-1.5 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {addingItem ? 'Adding…' : 'Add Item'}
-            </button>
-          </form>
-        )}
-      </div>
-
-      {data?.status === 'done' && completedUpTo < 7 && (
+      {status === 'done' && completedUpTo < 7 && (
         <div className="mt-6 pt-4 border-t border-gray-100">
-          <button
-            onClick={async () => { await markStageComplete(inquiry.id, 7, onRefresh); }}
-            className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-green-600 hover:bg-green-700"
-          >
+          <button onClick={async () => { await markStageComplete(inquiry.id, 7, onRefresh); }} className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-green-600 hover:bg-green-700">
             ✓ Mark Stage 7 Complete
           </button>
         </div>
@@ -3020,7 +3002,7 @@ export default function StageContent({
         )}
 
         {stage.num === 5 && (
-          <Stage5Content inquiry={inquiry} onRefresh={onRefresh} />
+          <Stage5Content inquiry={inquiry} completedUpTo={apiData.completedUpTo} onRefresh={onRefresh} />
         )}
 
         {stage.num === 6 && (
