@@ -357,15 +357,20 @@ function SectionViewModal({
   onSaved: (updated: ApiSection) => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
-  const [editMode, setEditMode] = useState(false);
-  const [summary, setSummary] = useState(section.summary);
-  const [saving, setSaving] = useState(false);
-  const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [editSummary, setEditSummary]   = useState(false);
+  const [editContent, setEditContent]   = useState(false);
+  const [summary, setSummary]           = useState(section.summary);
+  const [content, setContent]           = useState(section.content);
+  const [savingSummary, setSavingSummary] = useState(false);
+  const [savingContent, setSavingContent] = useState(false);
+  const [saveErr, setSaveErr]           = useState<string | null>(null);
 
   useEffect(() => {
     setSummary(section.summary);
-    setEditMode(false);
-  }, [section._id, section.summary]);
+    setContent(section.content);
+    setEditSummary(false);
+    setEditContent(false);
+  }, [section._id, section.summary, section.content]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
@@ -373,17 +378,31 @@ function SectionViewModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  async function handleSave() {
-    setSaving(true);
+  async function handleSaveSummary() {
+    setSavingSummary(true);
     setSaveErr(null);
     try {
       const updated = await api.sections.update(section._id, { summary });
       onSaved(updated);
-      setEditMode(false);
+      setEditSummary(false);
     } catch (e) {
       setSaveErr(String(e));
     } finally {
-      setSaving(false);
+      setSavingSummary(false);
+    }
+  }
+
+  async function handleSaveContent() {
+    setSavingContent(true);
+    setSaveErr(null);
+    try {
+      const updated = await api.sections.update(section._id, { content });
+      onSaved(updated);
+      setEditContent(false);
+    } catch (e) {
+      setSaveErr(String(e));
+    } finally {
+      setSavingContent(false);
     }
   }
 
@@ -416,43 +435,62 @@ function SectionViewModal({
           </div>
         </div>
 
+        {/* Metadata */}
+        <div className="shrink-0 border-b border-gray-100 px-5 py-4">
+          <dl className="grid grid-cols-2 gap-x-8 gap-y-4">
+            <div>
+              <dt className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-0.5">Document Type</dt>
+              <dd className="text-sm font-semibold text-gray-900">{section.docType}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-0.5">Document</dt>
+              <dd className="text-sm font-semibold text-gray-900 truncate">{section.documentTitle}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-0.5">Section Index</dt>
+              <dd className="text-sm font-semibold text-gray-900">#{section.sectionIndex + 1}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-0.5">Inquiry</dt>
+              <dd className="text-sm font-semibold text-gray-900 font-mono truncate">{section.inquiryId}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-0.5">Extracted</dt>
+              <dd className="text-sm font-semibold text-gray-900">{new Date(section.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-0.5">Last Edited</dt>
+              <dd className="text-sm font-semibold text-gray-900">{new Date(section.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</dd>
+            </div>
+          </dl>
+        </div>
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
           {/* Summary — editable */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Summary</p>
-              {!editMode && (
-                <button
-                  onClick={() => setEditMode(true)}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                >
+              {!editSummary && (
+                <button onClick={() => setEditSummary(true)} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
                   Edit
                 </button>
               )}
             </div>
-
-            {editMode ? (
+            {editSummary ? (
               <div>
                 <textarea
                   value={summary}
                   onChange={e => setSummary(e.target.value)}
-                  rows={5}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none leading-relaxed"
+                  rows={3}
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none leading-relaxed font-mono"
                 />
                 {saveErr && <p className="text-xs text-red-500 mt-1.5">{saveErr}</p>}
                 <div className="flex items-center gap-2 mt-2.5">
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    {saving ? 'Saving…' : 'Save'}
+                  <button onClick={handleSaveSummary} disabled={savingSummary} className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                    {savingSummary ? 'Saving…' : 'Save'}
                   </button>
-                  <button
-                    onClick={() => { setEditMode(false); setSummary(section.summary); setSaveErr(null); }}
-                    className="px-4 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
+                  <button onClick={() => { setEditSummary(false); setSummary(section.summary); setSaveErr(null); }} className="px-4 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
                     Cancel
                   </button>
                 </div>
@@ -464,15 +502,40 @@ function SectionViewModal({
             )}
           </div>
 
-          {/* Full content — read-only */}
-          {section.content && (
-            <div>
-              <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-2">Full Content</p>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">
-                {section.content}
-              </div>
+          {/* Full content — editable */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Full Content</p>
+              {!editContent && (
+                <button onClick={() => setEditContent(true)} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                  Edit
+                </button>
+              )}
             </div>
-          )}
+            {editContent ? (
+              <div>
+                <textarea
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  rows={10}
+                  className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-y leading-relaxed font-mono"
+                />
+                {saveErr && <p className="text-xs text-red-500 mt-1.5">{saveErr}</p>}
+                <div className="flex items-center gap-2 mt-2.5">
+                  <button onClick={handleSaveContent} disabled={savingContent} className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                    {savingContent ? 'Saving…' : 'Save'}
+                  </button>
+                  <button onClick={() => { setEditContent(false); setContent(section.content); setSaveErr(null); }} className="px-4 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">
+                {content || <span className="italic text-gray-400">No content.</span>}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1665,7 +1728,7 @@ function Stage5Content({ inquiry, completedUpTo, onRefresh }: Stage5ContentProps
           {analysing ? 'Analysing…' : status === 'done' ? '↺ Re-analyse' : '✦ Analyse Compliance'}
         </button>
         {analysing && (
-          <span className="text-sm text-indigo-600 animate-pulse">Reading all RFQ sections with Gemini…</span>
+          <span className="text-sm text-indigo-600 animate-pulse">Reading all RFQ sections...</span>
         )}
         {status === 'done' && meta && (
           <span className="text-xs text-gray-500">

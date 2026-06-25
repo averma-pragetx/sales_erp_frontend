@@ -448,7 +448,7 @@ export const api = {
   sections: {
     listForInquiry: (inquiryId: string) =>
       request<ApiSectionsResponse>(`/api/sections/inquiry/${encodeURIComponent(inquiryId)}`),
-    update: (sectionId: string, data: { summary?: string; title?: string; reviewDecision?: 'pending' | 'ok' | 'flagged' | 'issue'; reviewNote?: string }) =>
+    update: (sectionId: string, data: { summary?: string; content?: string; title?: string; reviewDecision?: 'pending' | 'ok' | 'flagged' | 'issue'; reviewNote?: string }) =>
       request<ApiSection>(`/api/sections/${sectionId}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
