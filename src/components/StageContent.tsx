@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { marked } from 'marked';
 import jsPDF from 'jspdf';
+import { Pencil, Trash2 } from 'lucide-react';
+
 import type { Inquiry } from '../types';
 import type { Stage } from '../data/stages';
 import { CLUSTER_COLORS, STAGES } from '../data/stages';
@@ -1052,7 +1054,7 @@ function GapAnalysisSection({
 
   return (
     <div className="mb-6">
-      <h3 className="text-sm font-semibold text-gray-900 mb-2">Document Gap Analysis</h3>
+      <h3 className="text-m font-semibold text-gray-900 mb-2">Document Gap Analysis</h3>
 
       {(status === 'pending' || gapAnalysis === null) && (
         <button
@@ -1110,7 +1112,7 @@ function GapAnalysisSection({
 
           {gapAnalysis.gaps.length > 0 && (
             <div className="mb-4">
-              <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-2">
+              <p className="text-sm font-semibold text-gray-900 mb-2">
                 Gaps
               </p>
               <table className="w-full text-sm border-collapse">
@@ -1540,120 +1542,176 @@ function StatusPill({ status, override }: { status: string; override?: string | 
 }
 
 function ComplianceRow({
-  item, index, onUpdate,
+  item, index, onUpdate, onDelete,
 }: {
   item: ComplianceItem;
   index: number;
-  onUpdate: (index: number, data: { statusOverride?: string | null; ownerOverride?: string | null; remarks?: string }) => void;
+  onUpdate: (index: number, data: { topic?: string; category?: string; sourceRef?: string; rfqBuyerRequirement?: string; oswalStandOffer?: string; impact?: string; status?: string; owner?: string; statusOverride?: string | null; ownerOverride?: string | null; remarks?: string }) => void;
+  onDelete: (index: number) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [editStatus, setEditStatus]   = useState(item.statusOverride ?? '');
-  const [editOwner, setEditOwner]     = useState(item.ownerOverride ?? '');
-  const [editRemarks, setEditRemarks] = useState(item.remarks ?? '');
-  const [saving, setSaving] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [eTopic,     setETopic]     = useState('');
+  const [eCategory,  setECategory]  = useState('');
+  const [eSourceRef, setESourceRef] = useState('');
+  const [eRfq,       setERfq]       = useState('');
+  const [eOswal,     setEOswal]     = useState('');
+  const [eImpact,    setEImpact]    = useState('');
+  const [eStatus,    setEStatus]    = useState('');
+  const [eOwner,     setEOwner]     = useState('');
+  const [eRemarks,   setERemarks]   = useState('');
+  const [saving,     setSaving]     = useState(false);
+  const [saveErr,    setSaveErr]    = useState<string | null>(null);
+
+  function openEdit() {
+    setETopic(item.topic);
+    setECategory(item.category);
+    setESourceRef(item.sourceRef || '');
+    setERfq(item.rfqBuyerRequirement);
+    setEOswal(item.oswalStandOffer || '');
+    setEImpact(item.impact || '');
+    setEStatus(item.statusOverride ?? item.status);
+    setEOwner(item.ownerOverride ?? item.owner ?? '');
+    setERemarks(item.remarks || '');
+    setSaveErr(null);
+    setShowEdit(true);
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!eTopic.trim() || !eRfq.trim()) { setSaveErr('Topic and RFQ Requirement are required.'); return; }
+    setSaving(true);
+    setSaveErr(null);
+    await onUpdate(index, {
+      topic: eTopic.trim(), category: eCategory, sourceRef: eSourceRef.trim(),
+      rfqBuyerRequirement: eRfq.trim(), oswalStandOffer: eOswal.trim(),
+      impact: eImpact.trim(), status: eStatus, owner: eOwner,
+      statusOverride: null, ownerOverride: null, remarks: eRemarks.trim(),
+    });
+    setSaving(false);
+    setShowEdit(false);
+  }
 
   const effectiveStatus = item.statusOverride ?? item.status;
   const effectiveOwner  = item.ownerOverride  ?? item.owner;
-  const hasOverride     = !!(item.statusOverride || item.ownerOverride);
-
-  async function handleSave() {
-    setSaving(true);
-    await onUpdate(index, {
-      statusOverride: editStatus || null,
-      ownerOverride:  editOwner  || null,
-      remarks:        editRemarks,
-    });
-    setSaving(false);
-    setExpanded(false);
-  }
+  const inputCls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300';
 
   return (
-    <tr className={`border-b border-gray-100 align-top ${effectiveStatus === 'Blocker' ? 'bg-red-50/40' : effectiveStatus === 'Deviation' ? 'bg-amber-50/30' : ''}`}>
-      <td className="py-2.5 pr-2 text-[11px] font-mono text-gray-400 whitespace-nowrap">{item.clauseId}</td>
-      <td className="py-2.5 pr-2 text-[11px] text-gray-500 whitespace-nowrap">{item.sourceRef || '—'}</td>
-      <td className="py-2.5 pr-3 text-sm font-medium text-gray-800">{item.topic}</td>
-      <td className="py-2.5 pr-2">
-        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.category === 'Commercial' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
-          {item.category}
-        </span>
-      </td>
-      <td className="py-2.5 pr-3 text-xs text-gray-600 max-w-[200px]">
-        <span className="line-clamp-3">{item.rfqBuyerRequirement}</span>
-      </td>
-      <td className="py-2.5 pr-3 text-xs text-gray-600 max-w-[180px]">
-        <span className="line-clamp-3">{item.oswalStandOffer}</span>
-      </td>
-      <td className="py-2.5 pr-3 text-xs text-gray-500 max-w-[160px]">
-        <span className="line-clamp-2 italic">{item.impact}</span>
-      </td>
-      <td className="py-2.5 pr-2 whitespace-nowrap">
-        <StatusPill status={item.status} override={item.statusOverride} />
-      </td>
-      <td className="py-2.5 pr-2 text-xs text-gray-600 whitespace-nowrap">{effectiveOwner || '—'}</td>
-      <td className="py-2.5">
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-            hasOverride || item.remarks
-              ? 'border-indigo-200 text-indigo-600 bg-indigo-50'
-              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-          }`}
-        >
-          {expanded ? '✕' : 'Edit'}
-        </button>
-      </td>
-
-      {expanded && (
-        <td colSpan={10} className="py-0">
-          <div className="bg-gray-50 border-t border-b border-gray-200 px-3 py-3 flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Status override</label>
-              <select
-                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                value={editStatus}
-                onChange={e => setEditStatus(e.target.value)}
-              >
-                <option value="">(keep AI: {item.status})</option>
-                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Owner override</label>
-              <select
-                className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                value={editOwner}
-                onChange={e => setEditOwner(e.target.value)}
-              >
-                <option value="">(keep AI: {item.owner})</option>
-                {OWNER_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
-            <div className="flex-1 min-w-[200px]">
-              <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Remarks</label>
-              <input
-                className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                value={editRemarks}
-                onChange={e => setEditRemarks(e.target.value)}
-                placeholder="Add your remarks…"
-              />
-            </div>
+    <>
+      <tr className={`border-b border-gray-100 align-top ${effectiveStatus === 'Blocker' ? 'bg-red-50/40' : effectiveStatus === 'Deviation' ? 'bg-amber-50/30' : ''}`}>
+        <td className="py-2.5 pr-2 text-[11px] font-mono text-gray-400 whitespace-nowrap">{item.clauseId}</td>
+        <td className="py-2.5 pr-2 text-[11px] text-gray-500 whitespace-nowrap">{item.sourceRef || '—'}</td>
+        <td className="py-2.5 pr-3 text-sm font-medium text-gray-800">{item.topic}</td>
+        <td className="py-2.5 pr-2">
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.category === 'Commercial' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
+            {item.category}
+          </span>
+        </td>
+        <td className="py-2.5 pr-3 text-xs text-gray-600 max-w-[200px]"><span className="line-clamp-3">{item.rfqBuyerRequirement}</span></td>
+        <td className="py-2.5 pr-3 text-xs text-gray-600 max-w-[180px]"><span className="line-clamp-3">{item.oswalStandOffer}</span></td>
+        <td className="py-2.5 pr-3 text-xs text-gray-500 max-w-[160px]"><span className="line-clamp-2 italic">{item.impact}</span></td>
+        <td className="py-2.5 pr-2 whitespace-nowrap"><StatusPill status={item.status} override={item.statusOverride} /></td>
+        <td className="py-2.5 pr-2 text-xs text-gray-600 whitespace-nowrap">{effectiveOwner || '—'}</td>
+        <td className="py-2.5 pr-3 text-xs text-gray-500 max-w-[160px]">
+          {item.remarks ? <span className="line-clamp-2">{item.remarks}</span> : <span className="text-gray-300">—</span>}
+        </td>
+        <td className="py-2.5">
+          <div className="flex items-center gap-1">
             <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-3 py-1 text-xs font-semibold text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50"
+              onClick={openEdit}
+              className="text-xs p-1 rounded border border-indigo-200 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+              title="Edit"
             >
-              {saving ? '…' : 'Save'}
+              <Pencil className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => setExpanded(false)}
-              className="px-3 py-1 text-xs text-gray-500 border border-gray-200 rounded hover:bg-gray-100"
+              onClick={async () => {
+                if (!confirm(`Delete "${item.topic}"? This cannot be undone.`)) return;
+                setDeleting(true);
+                await onDelete(index);
+                setDeleting(false);
+              }}
+              disabled={deleting}
+              className="text-xs p-1 rounded border border-red-100 text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 transition-colors"
+              title="Delete"
             >
-              Cancel
+              {deleting ? '…' : <Trash2 className="w-3.5 h-3.5" />}
             </button>
           </div>
         </td>
+      </tr>
+
+      {showEdit && (
+        <tr><td colSpan={11} className="p-0">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onClick={e => { if (e.target === e.currentTarget) setShowEdit(false); }}
+          >
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+                <h2 className="text-base font-bold text-gray-900">Edit Compliance Item</h2>
+                <button onClick={() => setShowEdit(false)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+              <form onSubmit={handleSave} className="overflow-y-auto px-6 py-5 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Topic *</label>
+                    <input className={inputCls} value={eTopic} onChange={e => setETopic(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Category</label>
+                    <select className={inputCls} value={eCategory} onChange={e => setECategory(e.target.value)}>
+                      <option>Technical</option>
+                      <option>Commercial</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Source Ref</label>
+                    <input className={inputCls} value={eSourceRef} onChange={e => setESourceRef(e.target.value)} placeholder="e.g. Cl. 4.2" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">RFQ Buyer Requirement *</label>
+                  <textarea className={`${inputCls} resize-none`} rows={3} value={eRfq} onChange={e => setERfq(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Oswal Stand / Offer</label>
+                  <textarea className={`${inputCls} resize-none`} rows={3} value={eOswal} onChange={e => setEOswal(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Status</label>
+                    <select className={inputCls} value={eStatus} onChange={e => setEStatus(e.target.value)}>
+                      {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Owner</label>
+                    <select className={inputCls} value={eOwner} onChange={e => setEOwner(e.target.value)}>
+                      <option value="">— select —</option>
+                      {OWNER_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Impact</label>
+                    <input className={inputCls} value={eImpact} onChange={e => setEImpact(e.target.value)} placeholder="e.g. Cost / Schedule" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Remarks</label>
+                    <input className={inputCls} value={eRemarks} onChange={e => setERemarks(e.target.value)} placeholder="Optional notes" />
+                  </div>
+                </div>
+                {saveErr && <p className="text-red-500 text-xs">{saveErr}</p>}
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+                  <button type="button" onClick={() => setShowEdit(false)} className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                  <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">{saving ? 'Saving…' : 'Save Changes'}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </td></tr>
       )}
-    </tr>
+    </>
   );
 }
 
@@ -1665,6 +1723,20 @@ function Stage5Content({ inquiry, completedUpTo, onRefresh }: Stage5ContentProps
   const [err, setErr]             = useState<string | null>(null);
   const [catFilter, setCatFilter]     = useState<'All' | 'Commercial' | 'Technical'>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
+
+  // Add-item form state
+  const [showAddForm, setShowAddForm]   = useState(false);
+  const [addTopic, setAddTopic]         = useState('');
+  const [addCategory, setAddCategory]   = useState<'Technical' | 'Commercial'>('Technical');
+  const [addSourceRef, setAddSourceRef] = useState('');
+  const [addRfq, setAddRfq]             = useState('');
+  const [addOswal, setAddOswal]         = useState('');
+  const [addImpact, setAddImpact]       = useState('');
+  const [addStatus, setAddStatus]       = useState('Under review');
+  const [addOwner, setAddOwner]         = useState('');
+  const [addRemarks, setAddRemarks]     = useState('');
+  const [addSaving, setAddSaving]       = useState(false);
+  const [addErr, setAddErr]             = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1694,13 +1766,79 @@ function Stage5Content({ inquiry, completedUpTo, onRefresh }: Stage5ContentProps
     }
   }
 
-  async function handleUpdateItem(index: number, patch: { statusOverride?: string | null; ownerOverride?: string | null; remarks?: string }) {
+  async function handleUpdateItem(index: number, patch: { topic?: string; category?: string; sourceRef?: string; rfqBuyerRequirement?: string; oswalStandOffer?: string; impact?: string; status?: string; owner?: string; statusOverride?: string | null; ownerOverride?: string | null; remarks?: string }) {
     try {
       const result = await api.stage5.updateItem(inquiry.id, index, patch);
       setData(result);
     } catch (e) {
       setErr(String(e));
     }
+  }
+
+  async function handleDeleteItem(index: number) {
+    try {
+      const result = await api.stage5.deleteItem(inquiry.id, index);
+      setData(result);
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  async function handleAddItem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!addTopic.trim() || !addRfq.trim()) {
+      setAddErr('Topic and RFQ Requirement are required.');
+      return;
+    }
+    setAddSaving(true);
+    setAddErr(null);
+    try {
+      const result = await api.stage5.addItem(inquiry.id, {
+        topic: addTopic.trim(),
+        category: addCategory,
+        sourceRef: addSourceRef.trim() || undefined,
+        rfqBuyerRequirement: addRfq.trim(),
+        oswalStandOffer: addOswal.trim() || undefined,
+        impact: addImpact.trim() || undefined,
+        status: addStatus,
+        owner: addOwner.trim() || undefined,
+        remarks: addRemarks.trim() || undefined,
+      });
+      setData(result);
+      setAddTopic(''); setAddCategory('Technical'); setAddSourceRef('');
+      setAddRfq(''); setAddOswal(''); setAddImpact('');
+      setAddStatus('Under review'); setAddOwner(''); setAddRemarks('');
+      setShowAddForm(false);
+    } catch (e) {
+      setAddErr(String(e));
+    } finally {
+      setAddSaving(false);
+    }
+  }
+
+  function exportCSV() {
+    const headers = ['Clause ID', 'Source Ref', 'Topic', 'Category', 'RFQ Buyer Requirement', 'Oswal Stand/Offer', 'Impact', 'Status', 'Owner', 'Remarks'];
+    const escape = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = (data?.complianceMatrix ?? []).map(item => [
+      item.clauseId,
+      item.sourceRef,
+      item.topic,
+      item.category,
+      item.rfqBuyerRequirement,
+      item.oswalStandOffer,
+      item.impact,
+      item.statusOverride ?? item.status,
+      item.ownerOverride ?? item.owner,
+      item.remarks ?? '',
+    ].map(escape).join(','));
+    const csv = [headers.map(escape).join(','), ...rows].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `compliance_matrix_${inquiry.id}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   if (loading) return <p className="text-sm text-gray-400 animate-pulse">Loading…</p>;
@@ -1731,9 +1869,19 @@ function Stage5Content({ inquiry, completedUpTo, onRefresh }: Stage5ContentProps
           <span className="text-sm text-indigo-600 animate-pulse">Reading all RFQ sections...</span>
         )}
         {status === 'done' && meta && (
-          <span className="text-xs text-gray-500">
-            {meta.totalComplianceItems} clauses extracted
-          </span>
+          <>
+            <span className="text-xs text-gray-500">
+              {meta.totalComplianceItems} clauses extracted
+            </span>
+            {matrix.length > 0 && (
+              <button
+                onClick={exportCSV}
+                className="ml-auto px-3 py-1.5 text-sm font-medium text-gray-700 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+              >
+                ↓ Export CSV
+              </button>
+            )}
+          </>
         )}
         {status === 'failed' && (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">failed</span>
@@ -1768,35 +1916,117 @@ function Stage5Content({ inquiry, completedUpTo, onRefresh }: Stage5ContentProps
 
       {/* Filters */}
       {matrix.length > 0 && (
-        <div className="flex gap-2 mb-4 flex-wrap">
-          {(['All', 'Commercial', 'Technical'] as const).map(c => (
-            <button
-              key={c}
-              onClick={() => setCatFilter(c)}
-              className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${catFilter === c ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
-            >
-              {c}
-            </button>
-          ))}
-          {statusFilter !== 'All' && (
-            <button
-              onClick={() => setStatusFilter('All')}
-              className="px-3 py-1 text-xs font-semibold rounded-full border border-gray-300 text-gray-500 hover:bg-gray-50"
-            >
-              ✕ Clear filter
-            </button>
-          )}
+        <div className="mb-4">
+          <div className="flex justify-between items-center gap-2 flex-wrap">
+            <div className="flex gap-2">
+              {(['All', 'Commercial', 'Technical'] as const).map(c => (
+                <button
+                  key={c}
+                  onClick={() => setCatFilter(c)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors ${catFilter === c ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                >
+                  {c}
+                </button>    
+              ))}
+            </div>
+
+            {/* Add item */}
+            {(status === 'done' || status === 'pending') && (
+              <button
+                onClick={() => { setShowAddForm(true); setAddErr(null); }}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+              >
+                + Add Records Manually
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Compliance matrix table */}
+      {/* Add Item Modal */}
+      {showAddForm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={e => { if (e.target === e.currentTarget) { setShowAddForm(false); setAddErr(null); } }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
+            {/* Dialog header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-base font-bold text-gray-900">Add Compliance Item</h2>
+              <button onClick={() => { setShowAddForm(false); setAddErr(null); }} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            {/* Dialog body */}
+            <form onSubmit={handleAddItem} className="overflow-y-auto px-6 py-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Topic *</label>
+                  <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={addTopic} onChange={e => setAddTopic(e.target.value)} placeholder="e.g. IBR Compliance" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Category</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={addCategory} onChange={e => setAddCategory(e.target.value as 'Technical' | 'Commercial')}>
+                    <option>Technical</option>
+                    <option>Commercial</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Source Ref</label>
+                  <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={addSourceRef} onChange={e => setAddSourceRef(e.target.value)} placeholder="e.g. Cl. 4.2" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">RFQ Buyer Requirement *</label>
+                <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" rows={3} value={addRfq} onChange={e => setAddRfq(e.target.value)} placeholder="What the buyer requires…" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Oswal Stand / Offer</label>
+                <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" rows={3} value={addOswal} onChange={e => setAddOswal(e.target.value)} placeholder="Our position…" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Status</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={addStatus} onChange={e => setAddStatus(e.target.value)}>
+                    {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Owner</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={addOwner} onChange={e => setAddOwner(e.target.value)}>
+                    <option value="">— select —</option>
+                    {OWNER_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Impact</label>
+                  <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={addImpact} onChange={e => setAddImpact(e.target.value)} placeholder="e.g. Cost / Schedule" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-1">Remarks</label>
+                  <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" value={addRemarks} onChange={e => setAddRemarks(e.target.value)} placeholder="Optional notes" />
+                </div>
+              </div>
+              {addErr && <p className="text-red-500 text-xs">{addErr}</p>}
+              {/* Dialog footer */}
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+                <button type="button" onClick={() => { setShowAddForm(false); setAddErr(null); }} className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                  Cancel
+                </button>
+                <button type="submit" disabled={addSaving} className="px-5 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
+                  {addSaving ? 'Saving…' : 'Add Item'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {filtered.length > 0 && (
-        <div className="overflow-x-auto mb-4">
-          <table className="w-full text-sm border-collapse min-w-[900px]">
+        <div className="w-5/4 max-h-[500px] overflow-auto mb-4 px-2 relative">
+          <table className="w-full text-sm border-collapse min-w-[700px]">
             <thead>
-              <tr className="border-b-2 border-gray-200">
-                {['#', 'Source', 'Topic', 'Cat.', 'RFQ Requirement', 'Oswal Stand', 'Impact', 'Status', 'Owner', ''].map(h => (
-                  <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-2 pr-3 whitespace-nowrap">{h}</th>
+              <tr>
+                {['Clause ID', 'Source', 'Topic', 'Category', 'RFQ Requirement', 'Oswal Stand', 'Impact', 'Status', 'Owner', 'Remarks', 'Actions'].map(h => (
+                  <th key={h} className="sticky top-0 bg-white z-10 text-[10px] font-bold uppercase text-gray-400 text-left pb-2 px-3 whitespace-nowrap border-b-2 border-gray-200">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -1807,6 +2037,7 @@ function Stage5Content({ inquiry, completedUpTo, onRefresh }: Stage5ContentProps
                   item={item}
                   index={matrix.indexOf(item)}
                   onUpdate={handleUpdateItem}
+                  onDelete={handleDeleteItem}
                 />
               ))}
             </tbody>
@@ -1817,6 +2048,8 @@ function Stage5Content({ inquiry, completedUpTo, onRefresh }: Stage5ContentProps
       {status === 'done' && filtered.length === 0 && (
         <p className="text-sm text-gray-400">No items match the current filter.</p>
       )}
+
+      
 
       {status === 'done' && completedUpTo < 5 && matrix.length > 0 && (
         <div className="mt-6 pt-4 border-t border-gray-100 flex items-center gap-3">
@@ -2095,7 +2328,20 @@ function Stage6Content({ inquiry, completedUpTo, onRefresh }: Stage6ContentProps
                 <td className="py-3 pr-3 text-sm text-gray-600">{tq.sendTo}</td>
                 <td className="py-3 pr-3 text-sm text-gray-600">{tq.raisedBy}</td>
                 <td className="py-3 pr-3">
-                  <TQStatusPill status={tq.status} />
+                  <div className="relative group inline-block">
+                    <TQStatusPill status={tq.status} />
+                    <div className="pointer-events-none absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-white border border-gray-200 rounded-xl shadow-xl p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                      {tq.answer ? (
+                        <>
+                          <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-1">Answer</p>
+                          <p className="text-sm text-gray-800 leading-relaxed">{tq.answer}</p>
+                        </>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">No answer yet.</p>
+                      )}
+                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-200" />
+                    </div>
+                  </div>
                 </td>
                 <td className="py-3">
                   <div className="flex flex-col gap-1.5">
@@ -2157,7 +2403,7 @@ function Stage6Content({ inquiry, completedUpTo, onRefresh }: Stage6ContentProps
   );
 }
 
-// ─── Stage 7: BOM Extraction ───────────────────────────────────────────────────
+// ─── Stage 7: BOM Extraction + Cost Estimation ─────────────────────────────────
 interface Stage7ContentProps {
   inquiry: Inquiry;
   completedUpTo: number;
@@ -2170,17 +2416,23 @@ function mocSourceBadge(src: string) {
   return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">NF</span>;
 }
 
+function inr(amount: number | null | undefined): string {
+  if (amount == null) return '—';
+  return '₹' + amount.toLocaleString('en-IN');
+}
+
 function EquipmentCard({ eq, index }: { eq: EquipmentBom; index: number }) {
   const [showBom, setShowBom]         = useState(true);
   const [showNozzles, setShowNozzles] = useState(false);
 
   const flags = [
-    eq.ibrApplicable  && <span key="ibr" className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">IBR</span>,
+    eq.ibrApplicable   && <span key="ibr" className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">IBR</span>,
     eq.hydrogenService && <span key="h2"  className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">H₂</span>,
     eq.deletedFromScope && <span key="del" className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">DELETED</span>,
   ].filter(Boolean);
 
-  const warnCount = eq.bom.filter(c => c.mocFlag && c.applicable !== 'No').length;
+  const warnCount    = eq.bom.filter(c => c.mocFlag && c.applicable !== 'No').length;
+  const hasCostData  = eq.totalEquipCost != null && eq.totalEquipCost > 0;
 
   return (
     <div className={`border rounded-lg mb-4 ${eq.deletedFromScope ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200 bg-white'}`}>
@@ -2189,21 +2441,21 @@ function EquipmentCard({ eq, index }: { eq: EquipmentBom; index: number }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="font-mono text-sm font-bold text-gray-900">{eq.tagNo || '—'}</span>
-            {eq.temaClass    && <span className="text-xs text-gray-500 font-medium">{eq.temaClass}</span>}
+            {eq.temaClass     && <span className="text-xs text-gray-500 font-medium">{eq.temaClass}</span>}
             {eq.exchangerType && <span className="text-xs text-gray-500">{eq.exchangerType}</span>}
             {flags}
           </div>
           <p className="text-sm text-gray-700 mb-2">{eq.service || '—'}</p>
           <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500">
-            {eq.sizeIdMm > 0         && <span>⌀{eq.sizeIdMm} mm ID</span>}
-            {eq.sizeSlMm > 0         && <span>L {eq.sizeSlMm} mm</span>}
-            {eq.noOfShells > 1       && <span>{eq.noOfShells} shells</span>}
-            {eq.designPressureShell  && <span>Shell DP {eq.designPressureShell}</span>}
-            {eq.designPressureTube   && <span>Tube DP {eq.designPressureTube}</span>}
-            {eq.designTempShellC > 0 && <span>Shell T {eq.designTempShellC}°C</span>}
-            {eq.designTempTubeC  > 0 && <span>Tube T {eq.designTempTubeC}°C</span>}
-            {eq.fluidShell           && <span>Shell: {eq.fluidShell}</span>}
-            {eq.fluidTube            && <span>Tube: {eq.fluidTube}</span>}
+            {eq.sizeIdMm > 0          && <span>⌀{eq.sizeIdMm} mm ID</span>}
+            {eq.sizeSlMm > 0          && <span>L {eq.sizeSlMm} mm</span>}
+            {eq.noOfShells > 1        && <span>{eq.noOfShells} shells</span>}
+            {eq.designPressureShell   && <span>Shell DP {eq.designPressureShell}</span>}
+            {eq.designPressureTube    && <span>Tube DP {eq.designPressureTube}</span>}
+            {eq.designTempShellC > 0  && <span>Shell T {eq.designTempShellC}°C</span>}
+            {eq.designTempTubeC  > 0  && <span>Tube T {eq.designTempTubeC}°C</span>}
+            {eq.fluidShell            && <span>Shell: {eq.fluidShell}</span>}
+            {eq.fluidTube             && <span>Tube: {eq.fluidTube}</span>}
             {eq.emptyWeightKg != null && <span>Empty wt: {eq.emptyWeightKg} kg</span>}
           </div>
           {warnCount > 0 && (
@@ -2212,7 +2464,37 @@ function EquipmentCard({ eq, index }: { eq: EquipmentBom; index: number }) {
             </div>
           )}
         </div>
+        {hasCostData && (
+          <div className="shrink-0 text-right">
+            <p className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">Estimated Cost</p>
+            <p className="text-base font-bold text-emerald-700">{inr(eq.totalEquipCost)}</p>
+          </div>
+        )}
       </div>
+
+      {/* Cost breakdown strip */}
+      {hasCostData && (
+        <div className="flex flex-wrap gap-x-5 gap-y-0.5 px-4 py-2 bg-emerald-50/60 border-b border-emerald-100 text-[11px]">
+          <span className="text-gray-500">Material <span className="font-semibold text-gray-700">{inr(eq.totalMaterialCost)}</span></span>
+          <span className="text-gray-400">+</span>
+          <span className="text-gray-500">Fabrication <span className="font-semibold text-gray-700">{inr(eq.totalFabricationCost)}</span></span>
+          {(eq.totalNozzleCost ?? 0) > 0 && <>
+            <span className="text-gray-400">+</span>
+            <span className="text-gray-500">Nozzles <span className="font-semibold text-gray-700">{inr(eq.totalNozzleCost)}</span></span>
+          </>}
+          {(eq.specialCost ?? 0) > 0 && <>
+            <span className="text-gray-400">+</span>
+            <span className="text-gray-500">Special reqs <span className="font-semibold text-gray-700">{inr(eq.specialCost)}</span></span>
+          </>}
+          {(eq.inspectionCost ?? 0) > 0 && <>
+            <span className="text-gray-400">+</span>
+            <span className="text-gray-500">Inspection/testing <span className="font-semibold text-gray-700">{inr(eq.inspectionCost)}</span></span>
+          </>}
+          <span className="text-gray-400 mx-1">═</span>
+          <span className="font-bold text-emerald-700">{inr(eq.totalEquipCost)}</span>
+        </div>
+      )}
+
       <div className="px-4 py-2">
         <button onClick={() => setShowBom(v => !v)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 mb-2">
           {showBom ? '▾ Hide BOM' : '▸ Show BOM'} ({eq.bom.length} components)
@@ -2222,7 +2504,7 @@ function EquipmentCard({ eq, index }: { eq: EquipmentBom; index: number }) {
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="border-b border-gray-200">
-                  {['Sr', 'Component', 'Applic.', 'MOC', 'Src', 'Wt (kg)', 'Qty', 'Type / Remarks'].map(h => (
+                  {['S No.', 'Component', 'MOC', 'Wt (kg)', 'Qty', 'Rate (₹/kg)', 'Est. Cost (₹)', 'Type / Remarks'].map(h => (
                     <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-1.5 pr-3 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -2232,14 +2514,19 @@ function EquipmentCard({ eq, index }: { eq: EquipmentBom; index: number }) {
                   <tr key={ci} className={`border-b border-gray-50 align-top ${comp.applicable === 'No' ? 'opacity-40' : ''}`}>
                     <td className="py-1.5 pr-3 text-gray-400 font-mono">{comp.srNo || ci + 1}</td>
                     <td className="py-1.5 pr-3 text-gray-800 font-medium">{comp.component}</td>
-                    <td className="py-1.5 pr-3">
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${comp.applicable === 'No' ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700'}`}>{comp.applicable}</span>
-                    </td>
                     <td className="py-1.5 pr-3 text-gray-700">{comp.moc ?? <span className="text-red-500 font-semibold">—</span>}</td>
-                    <td className="py-1.5 pr-3">{mocSourceBadge(comp.mocSource)}</td>
                     <td className="py-1.5 pr-3 text-gray-600 font-mono">{comp.weightKg ?? '—'}</td>
                     <td className="py-1.5 pr-3 text-gray-600">{comp.quantity} {comp.unit}</td>
-                    <td className="py-1.5 pr-3 text-gray-500 max-w-[220px]">
+                    <td className="py-1.5 pr-3 font-mono text-gray-500">
+                      {comp.unitCostPerKg != null ? `₹${comp.unitCostPerKg.toLocaleString('en-IN')}` : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="py-1.5 pr-3 whitespace-nowrap">
+                      <span className={`font-mono font-semibold ${comp.totalCost != null ? 'text-emerald-700' : 'text-gray-300'}`}>
+                        {comp.totalCost != null ? inr(comp.totalCost) : '—'}
+                      </span>
+                      {comp.costBasis && <p className="text-[9px] text-gray-400 leading-tight mt-0.5 max-w-[160px] whitespace-normal">{comp.costBasis}</p>}
+                    </td>
+                    <td className="py-1.5 pr-3 text-gray-500 max-w-[200px]">
                       {comp.typeDetail && <span className="text-gray-700 mr-2">{comp.typeDetail}</span>}
                       {comp.mocFlag    && <span className="text-amber-700 text-[10px]">⚠ {comp.mocFlag}</span>}
                       {comp.remarks && !comp.mocFlag && <span>{comp.remarks}</span>}
@@ -2260,7 +2547,7 @@ function EquipmentCard({ eq, index }: { eq: EquipmentBom; index: number }) {
                 <table className="w-full text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      {['Mark', 'Size NPS', 'Class', 'Sch', 'Facing', 'Designation', 'MOC Neck', 'MOC Flange'].map(h => (
+                      {['Nozzle Mark', 'Size', 'ASME Class', 'Schedule', 'Designation', 'MOC Neck', 'MOC Flange', 'Est. Cost (₹)'].map(h => (
                         <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-1.5 pr-3 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -2272,10 +2559,15 @@ function EquipmentCard({ eq, index }: { eq: EquipmentBom; index: number }) {
                         <td className="py-1.5 pr-3 text-gray-700">{n.sizeNps}</td>
                         <td className="py-1.5 pr-3 text-gray-600">{n.asmeClass}</td>
                         <td className="py-1.5 pr-3 text-gray-600">{n.schedule}</td>
-                        <td className="py-1.5 pr-3 text-gray-600">{n.facing}</td>
                         <td className="py-1.5 pr-3 text-gray-700">{n.designation}</td>
                         <td className="py-1.5 pr-3 text-gray-600">{n.mocNeck ?? <span className="text-red-400">—</span>}{n.mocFlag && <span className="text-amber-600 ml-1 text-[10px]">⚠</span>}</td>
                         <td className="py-1.5 pr-3 text-gray-600">{n.mocFlange ?? <span className="text-red-400">—</span>}</td>
+                        <td className="py-1.5 pr-3 whitespace-nowrap">
+                          <span className={`font-mono font-semibold ${n.totalCost != null ? 'text-emerald-700' : 'text-gray-300'}`}>
+                            {n.totalCost != null ? inr(n.totalCost) : '—'}
+                          </span>
+                          {n.costBasis && <p className="text-[9px] text-gray-400 leading-tight mt-0.5 max-w-[160px] whitespace-normal">{n.costBasis}</p>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -2293,6 +2585,7 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
   const [data, setData]             = useState<ApiStage7 | null>(null);
   const [loading, setLoading]       = useState(true);
   const [extracting, setExtracting] = useState(false);
+  const [estimating, setEstimating] = useState(false);
   const [err, setErr]               = useState<string | null>(null);
 
   useEffect(() => {
@@ -2321,19 +2614,45 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
     }
   }
 
+  async function handleEstimateCost() {
+    setEstimating(true);
+    setErr(null);
+    try {
+      const result = await api.stage7.estimateCost(inquiry.id);
+      setData(result);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setEstimating(false);
+    }
+  }
+
   if (loading) return <p className="text-sm text-gray-400 animate-pulse">Loading…</p>;
 
   const status    = data?.status ?? 'pending';
   const proj      = data?.projectInfo;
   const equipment = data?.equipment ?? [];
 
+  const activeEquip      = equipment.filter(e => !e.deletedFromScope);
+  const projectTotal     = activeEquip.reduce((s, e) => s + (e.totalEquipCost ?? 0), 0);
+  const hasCosts         = activeEquip.some(e => e.totalEquipCost != null && e.totalEquipCost > 0);
+
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
-        <button onClick={handleExtract} disabled={extracting} className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <button onClick={handleExtract} disabled={extracting || estimating} className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
           {extracting ? 'Extracting BOM…' : status === 'done' ? '↺ Re-extract BOM' : '✦ Extract BOM'}
         </button>
-        {extracting && <span className="text-sm text-indigo-600 animate-pulse">Reading datasheets with Gemini…</span>}
+        {status === 'done' && (
+          <button onClick={handleEstimateCost} disabled={extracting || estimating} className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
+            {estimating ? 'Estimating…' : '₹ Re-estimate Costs'}
+          </button>
+        )}
+        {(extracting || estimating) && (
+          <span className="text-sm text-indigo-600 animate-pulse">
+            {extracting ? 'Reading datasheets…' : 'Applying market rates…'}
+          </span>
+        )}
         {status === 'done' && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">done · {equipment.length} tag{equipment.length !== 1 ? 's' : ''}</span>}
         {status === 'failed' && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">failed</span>}
       </div>
@@ -2341,7 +2660,7 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
       {data?.error && status === 'failed' && <p className="text-red-400 text-xs mb-4 font-mono">{data.error}</p>}
 
       {proj && (proj.client || proj.jobNo || proj.prNumber) && (
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 mb-5 px-1">
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 mb-4 px-1">
           {proj.client     && <span><span className="font-semibold text-gray-700">Client:</span> {proj.client}</span>}
           {proj.jobNo      && <span><span className="font-semibold text-gray-700">Job No:</span> {proj.jobNo}</span>}
           {proj.prNumber   && <span><span className="font-semibold text-gray-700">PR No:</span> {proj.prNumber}</span>}
@@ -2350,14 +2669,18 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
           {proj.date       && <span><span className="font-semibold text-gray-700">Date:</span> {proj.date}</span>}
         </div>
       )}
-      {equipment.length > 0 && (
-        <div className="flex gap-3 items-center text-xs text-gray-500 mb-4">
-          <span className="font-semibold text-gray-600">MOC source:</span>
-          <span className="flex items-center gap-1">{mocSourceBadge('datasheet')} From datasheet</span>
-          <span className="flex items-center gap-1">{mocSourceBadge('inferred')} Inferred</span>
-          <span className="flex items-center gap-1">{mocSourceBadge('not_found')} Not found</span>
+
+      {/* Project-level cost summary */}
+      {hasCosts && projectTotal > 0 && (
+        <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 mb-5">
+          <div>
+            <p className="text-[10px] font-bold tracking-widest text-emerald-600 uppercase mb-0.5">Project Cost Estimate</p>
+            <p className="text-xs text-gray-500">{activeEquip.filter(e => e.totalEquipCost).length} of {activeEquip.length} tag{activeEquip.length !== 1 ? 's' : ''} costed · includes material, fabrication &amp; testing</p>
+          </div>
+          <p className="text-2xl font-bold text-emerald-700">{inr(projectTotal)}</p>
         </div>
       )}
+
       {equipment.map((eq, i) => <EquipmentCard key={eq.tagNo || i} eq={eq} index={i} />)}
       {status === 'done' && equipment.length === 0 && <p className="text-sm text-gray-400">No equipment found.</p>}
 

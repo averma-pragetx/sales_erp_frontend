@@ -276,17 +276,22 @@ export interface ApiStage6 {
 
 // Stage 7
 export interface BomComponent {
-  srNo:       string;
-  component:  string;
-  applicable: string;
-  moc:        string | null;
-  mocSource:  string;
-  mocFlag:    string | null;
-  typeDetail: string | null;
-  remarks:    string;
-  weightKg:   number | null;
-  quantity:   string;
-  unit:       string;
+  srNo:            string;
+  component:       string;
+  applicable:      string;
+  moc:             string | null;
+  mocSource:       string;
+  mocFlag:         string | null;
+  typeDetail:      string | null;
+  remarks:         string;
+  weightKg:        number | null;
+  quantity:        string;
+  unit:            string;
+  unitCostPerKg:   number | null;
+  materialCost:    number | null;
+  fabricationCost: number | null;
+  totalCost:       number | null;
+  costBasis:       string | null;
 }
 
 export interface NozzleEntry {
@@ -299,6 +304,8 @@ export interface NozzleEntry {
   mocNeck:     string | null;
   mocFlange:   string | null;
   mocFlag:     string | null;
+  totalCost:   number | null;
+  costBasis:   string | null;
 }
 
 export interface EquipmentBom {
@@ -329,6 +336,12 @@ export interface EquipmentBom {
   hydrogenService:           boolean;
   bom:                       BomComponent[];
   nozzleSchedule:            NozzleEntry[];
+  totalMaterialCost:         number | null;
+  totalFabricationCost:      number | null;
+  totalNozzleCost:           number | null;
+  specialCost:               number | null;
+  inspectionCost:            number | null;
+  totalEquipCost:            number | null;
 }
 
 export interface ProjectInfo {
@@ -479,10 +492,19 @@ export const api = {
       request<ApiStage5>(`/api/stage5/${encodeURIComponent(inquiryId)}`),
     analyse: (inquiryId: string) =>
       request<ApiStage5>(`/api/stage5/${encodeURIComponent(inquiryId)}/analyse`, { method: 'POST' }),
-    updateItem: (inquiryId: string, itemIndex: number, data: { statusOverride?: string | null; ownerOverride?: string | null; remarks?: string }) =>
+    updateItem: (inquiryId: string, itemIndex: number, data: { topic?: string; category?: string; sourceRef?: string; rfqBuyerRequirement?: string; oswalStandOffer?: string; impact?: string; status?: string; owner?: string; statusOverride?: string | null; ownerOverride?: string | null; remarks?: string }) =>
       request<ApiStage5>(`/api/stage5/${encodeURIComponent(inquiryId)}/items/${itemIndex}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
+      }),
+    addItem: (inquiryId: string, data: { topic: string; rfqBuyerRequirement: string; category?: string; sourceRef?: string; oswalStandOffer?: string; impact?: string; status?: string; owner?: string; remarks?: string }) =>
+      request<ApiStage5>(`/api/stage5/${encodeURIComponent(inquiryId)}/items`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    deleteItem: (inquiryId: string, itemIndex: number) =>
+      request<ApiStage5>(`/api/stage5/${encodeURIComponent(inquiryId)}/items/${itemIndex}`, {
+        method: 'DELETE',
       }),
   },
 
@@ -508,6 +530,8 @@ export const api = {
       request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}`),
     extract: (inquiryId: string) =>
       request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}/extract`, { method: 'POST' }),
+    estimateCost: (inquiryId: string) =>
+      request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}/estimate-cost`, { method: 'POST' }),
   },
 
   stage8: {
