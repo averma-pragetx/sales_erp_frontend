@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { marked } from 'marked';
 import jsPDF from 'jspdf';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Bot } from 'lucide-react';
 
 import type { Inquiry } from '../types';
 import type { Stage } from '../data/stages';
@@ -296,8 +296,6 @@ function UploadedDocsTable({
   docs: ApiDocument[];
   onDocumentsChange: (docs: ApiDocument[]) => void;
 }) {
-  const [chatDoc, setChatDoc] = useState<ApiDocument | null>(null);
-
   async function handleDelete(docId: string) {
     if (!confirm('Remove this document?')) return;
     await api.documents.delete(docId);
@@ -307,62 +305,49 @@ function UploadedDocsTable({
   if (docs.length === 0) return null;
 
   return (
-    <>
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="border-b border-gray-200">
-            {['DOC', 'TITLE', 'REV', 'STATUS', 'ACTIONS'].map(h => (
-              <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-2 pr-4">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {docs.map(d => (
-            <tr key={d._id} className="border-b border-gray-100 hover:bg-gray-50">
-              <td className="py-3 pr-4 font-mono text-xs text-indigo-600 font-semibold">{d.docType}</td>
-              <td className="py-3 pr-4 text-sm text-gray-800">{d.title}</td>
-              <td className="py-3 pr-4 text-sm text-gray-500">{d.rev}</td>
-              <td className={`py-3 pr-4 text-sm font-medium ${STATUS_STYLES[d.status]}`}>{d.status}</td>
-              <td className="py-3">
-                <div className="flex items-center gap-2">
-                  {d.hasFile && d.presignedUrl ? (
-                    <a
-                      href={d.presignedUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1 text-xs font-medium text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-50"
-                    >
-                      View
-                    </a>
-                  ) : (
-                    <span className="px-3 py-1 text-xs text-gray-300 border border-gray-100 rounded-md">View</span>
-                  )}
-                  {d.hasFile ? (
-                    <button
-                      onClick={() => setChatDoc(d)}
-                      className="px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-200 rounded-md hover:bg-emerald-50"
-                    >
-                      Chat
-                    </button>
-                  ) : (
-                    <span className="px-3 py-1 text-xs text-gray-300 border border-gray-100 rounded-md">Chat</span>
-                  )}
-                  <button
-                    onClick={() => handleDelete(d._id)}
-                    className="px-3 py-1 text-xs font-medium text-red-500 border border-red-100 rounded-md hover:bg-red-50"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </td>
-            </tr>
+    <table className="w-full text-sm border-collapse">
+      <thead>
+        <tr className="border-b border-gray-200">
+          {['DOC', 'TITLE', 'REV', 'STATUS', 'ACTIONS'].map(h => (
+            <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-2 pr-4">
+              {h}
+            </th>
           ))}
-        </tbody>
-      </table>
-      {chatDoc && <DocChatModal doc={chatDoc} onClose={() => setChatDoc(null)} />}
-    </>
+        </tr>
+      </thead>
+      <tbody>
+        {docs.map(d => (
+          <tr key={d._id} className="border-b border-gray-100 hover:bg-gray-50">
+            <td className="py-3 pr-4 font-mono text-xs text-indigo-600 font-semibold">{d.docType}</td>
+            <td className="py-3 pr-4 text-sm text-gray-800">{d.title}</td>
+            <td className="py-3 pr-4 text-sm text-gray-500">{d.rev}</td>
+            <td className={`py-3 pr-4 text-sm font-medium ${STATUS_STYLES[d.status]}`}>{d.status}</td>
+            <td className="py-3">
+              <div className="flex items-center gap-2">
+                {d.hasFile && d.presignedUrl ? (
+                  <a
+                    href={d.presignedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1 text-xs font-medium text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-50"
+                  >
+                    View
+                  </a>
+                ) : (
+                  <span className="px-3 py-1 text-xs text-gray-300 border border-gray-100 rounded-md">View</span>
+                )}
+                <button
+                  onClick={() => handleDelete(d._id)}
+                  className="px-3 py-1 text-xs font-medium text-red-500 border border-red-100 rounded-md hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -370,6 +355,25 @@ const PROVIDER_LABELS: Record<LlmProvider, string> = {
   gemini: 'Gemini',
   openai: 'OpenAI',
 };
+
+// True when this message is a model answer whose provider differs from the
+// most recent prior model answer's provider — i.e. the user switched LLMs
+// between these two turns. The full conversation history is still sent to
+// whichever provider answers next (see handleSend), this is purely a UI cue.
+function providerSwitchedAt(
+  messages: { role: 'user' | 'model'; provider?: LlmProvider }[],
+  index: number,
+): boolean {
+  const current = messages[index];
+  if (current.role !== 'model' || !current.provider) return false;
+  for (let j = index - 1; j >= 0; j--) {
+    const prev = messages[j];
+    if (prev.role === 'model' && prev.provider) {
+      return prev.provider !== current.provider;
+    }
+  }
+  return false;
+}
 
 function ProviderToggle({ provider, onChange }: { provider: LlmProvider; onChange: (p: LlmProvider) => void }) {
   return (
@@ -447,9 +451,14 @@ function VersionHistoryPanel({ versions, loading, error }: { versions: ApiPageIn
 }
 
 // ─── Chat with a document (PageIndex — reasoning over a page-range tree, no vectors) ──
-function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void }) {
+function DocChatModal({ documents, onClose }: { documents: ApiDocument[]; onClose: () => void }) {
+  const chatDocs = documents.filter(d => d.hasFile);
+
   const overlayRef = useRef<HTMLDivElement>(null);
   const bodyRef    = useRef<HTMLDivElement>(null);
+
+  const [selectedDocId, setSelectedDocId] = useState<string>(chatDocs[0]?._id ?? '');
+  const doc = chatDocs.find(d => d._id === selectedDocId) ?? chatDocs[0] ?? null;
 
   const [pageIndex, setPageIndex]       = useState<ApiPageIndex | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -459,17 +468,19 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
   const [repairErr, setRepairErr]       = useState<string | null>(null);
   const [provider, setProvider]         = useState<LlmProvider>('gemini');
 
-  const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string; pagesUsed?: number[] }[]>([]);
+  const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string; pagesUsed?: number[]; provider?: LlmProvider }[]>([]);
   const [input, setInput]       = useState('');
   const [sending, setSending]   = useState(false);
   const [chatErr, setChatErr]   = useState<string | null>(null);
 
   const [showHistory, setShowHistory]     = useState(false);
+  const [summaryCollapsed, setSummaryCollapsed] = useState(true);
   const [versions, setVersions]           = useState<ApiPageIndexVersion[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsErr, setVersionsErr]     = useState<string | null>(null);
 
   useEffect(() => {
+    if (!doc) return;
     let cancelled = false;
     api.pageIndex.get(doc._id)
       .then(res => {
@@ -480,7 +491,7 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
       .catch(e => { if (!cancelled) setBuildErr(String(e)); })
       .finally(() => { if (!cancelled) setLoadingStatus(false); });
     return () => { cancelled = true; };
-  }, [doc._id]);
+  }, [doc]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
@@ -492,7 +503,25 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
 
+  // Switching documents resets everything scoped to the previous one — done
+  // here (a plain event handler), not in an effect, so it's a single
+  // synchronous batch instead of a cascade of effect-triggered renders.
+  function handleSelectDoc(newId: string) {
+    setSelectedDocId(newId);
+    setPageIndex(null);
+    setLoadingStatus(true);
+    setBuildErr(null);
+    setRepairErr(null);
+    setMessages([]);
+    setChatErr(null);
+    setShowHistory(false);
+    setVersions([]);
+    setVersionsErr(null);
+    setSummaryCollapsed(true);
+  }
+
   async function loadVersions() {
+    if (!doc) return;
     setLoadingVersions(true);
     setVersionsErr(null);
     try {
@@ -511,6 +540,7 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
   }
 
   async function handleBuild() {
+    if (!doc) return;
     setBuilding(true);
     setBuildErr(null);
     try {
@@ -525,6 +555,7 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
   }
 
   async function handleRepair() {
+    if (!doc) return;
     setRepairing(true);
     setRepairErr(null);
     try {
@@ -540,7 +571,7 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || sending) return;
+    if (!doc || !text || sending) return;
     const history = messages.map(m => ({ role: m.role, text: m.text }));
     setMessages(prev => [...prev, { role: 'user', text }]);
     setInput('');
@@ -548,7 +579,7 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
     setSending(true);
     try {
       const res = await api.pageIndex.chat(doc._id, text, history, provider);
-      setMessages(prev => [...prev, { role: 'model', text: res.answer, pagesUsed: res.pagesUsed }]);
+      setMessages(prev => [...prev, { role: 'model', text: res.answer, pagesUsed: res.pagesUsed, provider }]);
     } catch (e) {
       setChatErr(String(e));
     } finally {
@@ -556,7 +587,7 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
     }
   }
 
-  const ready = pageIndex?.status === 'done';
+  const ready = doc !== null && pageIndex?.status === 'done';
   const fixableFlags = pageIndex?.qualityFlags.filter(f => !f.startsWith('Document exceeded')) ?? [];
 
   return (
@@ -571,15 +602,31 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="font-mono text-[11px] font-bold text-white bg-slate-800 px-2 py-0.5 rounded shrink-0">
-                  {doc.docType}
-                </span>
-                <span className="text-xs text-gray-400 truncate">{doc.title}</span>
+                {doc ? (
+                  <>
+                    <span className="font-mono text-[11px] font-bold text-white bg-slate-800 px-2 py-0.5 rounded shrink-0">
+                      {doc.docType}
+                    </span>
+                    <select
+                      value={doc._id}
+                      onChange={e => handleSelectDoc(e.target.value)}
+                      className="text-xs text-gray-600 bg-transparent border border-gray-200 rounded px-1.5 py-0.5 max-w-[220px] focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                    >
+                      {chatDocs.map(d => (
+                        <option key={d._id} value={d._id}>{d.docType} — {d.title}</option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <span className="font-mono text-[11px] font-bold text-white bg-slate-800 px-2 py-0.5 rounded shrink-0">
+                    CHAT
+                  </span>
+                )}
               </div>
-              <p className="text-sm font-bold text-gray-900 leading-snug">Chat with this document</p>
+              <p className="text-sm font-bold text-gray-900 leading-snug">Chat with a document</p>
               {ready && pageIndex && (
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {pageIndex.pageCount} pages indexed · built with {PROVIDER_LABELS[pageIndex.provider]}
+                  {pageIndex.pageCount} pages indexed
                 </p>
               )}
             </div>
@@ -602,17 +649,17 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
               </button>
             </div>
           </div>
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
-              {ready ? 'Answer with' : 'Build index with'}
-            </span>
-            <ProviderToggle provider={provider} onChange={setProvider} />
-          </div>
         </div>
 
         {/* Body */}
         <div ref={bodyRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
-          {loadingStatus ? (
+          {!doc ? (
+            <div className="text-center py-10">
+              <p className="text-sm text-gray-600">
+                No documents uploaded in this inquiry yet.
+              </p>
+            </div>
+          ) : loadingStatus ? (
             <p className="text-sm text-gray-400">Checking index status…</p>
           ) : !ready ? (
             <div className="text-center py-10">
@@ -636,8 +683,23 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
                 <VersionHistoryPanel versions={versions} loading={loadingVersions} error={versionsErr} />
               )}
               {pageIndex.docSummary && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600 leading-relaxed">
-                  {pageIndex.docSummary}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 leading-relaxed overflow-hidden">
+                  <button
+                    onClick={() => setSummaryCollapsed(!summaryCollapsed)}
+                    className={`w-full flex items-center justify-between p-3 font-bold uppercase tracking-wide text-black hover:bg-gray-100 transition-colors sticky top-0 bg-gray-50 z-10 text-left ${
+                      !summaryCollapsed ? 'border-b border-gray-200/50' : ''
+                    }`}
+                  >
+                    <span>Document Summary</span>
+                    <span className="text-gray-400 text-[10px] normal-case font-normal shrink-0">
+                      {summaryCollapsed ? 'Expand ▼' : 'Collapse ▲'}
+                    </span>
+                  </button>
+                  {!summaryCollapsed && (
+                    <div className="p-3 whitespace-pre-wrap">
+                      {pageIndex.docSummary}
+                    </div>
+                  )}
                 </div>
               )}
               {pageIndex.qualityFlags.length > 0 && (
@@ -660,26 +722,31 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
                   {repairErr && <p className="text-red-600 mt-1.5">{repairErr}</p>}
                 </div>
               )}
-              {messages.length === 0 && (
-                <p className="text-xs text-gray-400 italic">
-                  Ask anything about this document — answers cite the pages they came from.
-                </p>
-              )}
               {messages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={
-                      m.role === 'user'
-                        ? 'max-w-[85%] bg-indigo-600 text-white text-sm rounded-2xl rounded-br-sm px-4 py-2.5'
-                        : 'max-w-[85%] bg-gray-100 text-gray-800 text-sm rounded-2xl rounded-bl-sm px-4 py-2.5'
-                    }
-                  >
-                    <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
-                    {m.pagesUsed && m.pagesUsed.length > 0 && (
-                      <p className={`text-[10px] mt-1.5 ${m.role === 'user' ? 'text-indigo-200' : 'text-gray-400'}`}>
-                        Pages consulted: {m.pagesUsed.join(', ')}
-                      </p>
-                    )}
+                <div key={i}>
+                  {providerSwitchedAt(messages, i) && (
+                    <p className="text-center text-[10px] text-gray-400 my-2">
+                      — switched to {PROVIDER_LABELS[m.provider!]} —
+                    </p>
+                  )}
+                  <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={
+                        m.role === 'user'
+                          ? 'max-w-[85%] bg-indigo-600 text-white text-sm rounded-2xl rounded-br-sm px-4 py-2.5'
+                          : 'max-w-[85%] bg-gray-100 text-gray-800 text-sm rounded-2xl rounded-bl-sm px-4 py-2.5'
+                      }
+                    >
+                      {m.role === 'model' && m.provider && (
+                        <p className="text-[10px] font-semibold text-gray-400 mb-1">{PROVIDER_LABELS[m.provider]}</p>
+                      )}
+                      <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
+                      {m.pagesUsed && m.pagesUsed.length > 0 && (
+                        <p className={`text-[10px] mt-1.5 ${m.role === 'user' ? 'text-indigo-200' : 'text-gray-400'}`}>
+                          Pages consulted: {m.pagesUsed.join(', ')}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -701,6 +768,7 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
                 disabled={sending}
                 className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-50"
               />
+              <ProviderToggle provider={provider} onChange={setProvider} />
               <button
                 onClick={handleSend}
                 disabled={sending || !input.trim()}
@@ -2778,12 +2846,6 @@ interface Stage7ContentProps {
   onRefresh: () => void;
 }
 
-function mocSourceBadge(src: string) {
-  if (src === 'datasheet') return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700">DS</span>;
-  if (src === 'inferred')  return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">INF</span>;
-  return <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">NF</span>;
-}
-
 function inr(amount: number | null | undefined): string {
   if (amount == null) return '—';
   return '₹' + amount.toLocaleString('en-IN');
@@ -3718,7 +3780,10 @@ export default function StageContent({
   const isCurrent = stage.num === apiData.completedUpTo + 1;
   const clusterColor = CLUSTER_COLORS[stage.cluster];
 
+  const [showChat, setShowChat] = useState(false);
+
   return (
+    <>
     <div className="flex-1 overflow-y-auto p-6">
       <div className="max-w-4xl">
         <StageHeader
@@ -3781,5 +3846,15 @@ export default function StageContent({
         )}
       </div>
     </div>
+
+    <button
+      onClick={() => setShowChat(true)}
+      title="Chat with an uploaded document"
+      className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 flex items-center justify-center"
+    >
+      <Bot size={24} />
+    </button>
+    {showChat && <DocChatModal documents={documents} onClose={() => setShowChat(false)} />}
+    </>
   );
 }
