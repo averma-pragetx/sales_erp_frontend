@@ -138,6 +138,40 @@ export interface ExtractInquiryResult {
 
 export type NewInquiryPayload = Omit<ApiInquiry, '_id' | 'createdAt'>;
 
+// ─── Leads (Lead Engine) ────────────────────────────────────────────────────
+
+export interface ApiLead {
+  _id: string;
+  leadId: string;
+  client: string;
+  clientType: string;
+  tenderRef: string;
+  title: string;
+  source: string;
+  value: number;
+  currency: 'USD' | 'INR';
+  valueUnit: 'Mn' | 'Cr';
+  dueDate: string;
+  avlStatus: 'approved' | 'not_registered' | 'review';
+  score: number | null;
+  assignedTo: string;
+  notes: string;
+  status: 'new' | 'approved' | 'rejected' | 'pushed';
+  pushedInquiryId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NewLeadPayload = Omit<
+  ApiLead,
+  '_id' | 'createdAt' | 'updatedAt' | 'status' | 'pushedInquiryId'
+>;
+
+export interface PushToSalesResult {
+  lead: ApiLead;
+  inquiry: ApiInquiry;
+}
+
 // Sections
 export interface ApiSection {
   _id: string;
@@ -465,6 +499,19 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ cluster }),
       }),
+  },
+
+  leads: {
+    list:   () => request<ApiLead[]>('/api/leads'),
+    get:    (id: string) => request<ApiLead>(`/api/leads/${encodeURIComponent(id)}`),
+    create: (data: NewLeadPayload) =>
+      request<ApiLead>('/api/leads', { method: 'POST', body: JSON.stringify(data) }),
+    approve: (id: string) =>
+      request<ApiLead>(`/api/leads/${encodeURIComponent(id)}/approve`, { method: 'PATCH' }),
+    reject: (id: string) =>
+      request<ApiLead>(`/api/leads/${encodeURIComponent(id)}/reject`, { method: 'PATCH' }),
+    pushToSales: (id: string) =>
+      request<PushToSalesResult>(`/api/leads/${encodeURIComponent(id)}/push-to-sales`, { method: 'POST' }),
   },
 
   documents: {
