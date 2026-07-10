@@ -9,7 +9,9 @@ import { CLUSTER_COLORS, STAGES } from '../data/stages';
 import type {
   ApiDocument,
   ApiInquiry,
+  ApiPageIndex,
   ApiSection,
+  LlmProvider,
   ApiSectionsByDoc,
   ApiStage3,
   ApiStage4,
@@ -293,6 +295,8 @@ function UploadedDocsTable({
   docs: ApiDocument[];
   onDocumentsChange: (docs: ApiDocument[]) => void;
 }) {
+  const [chatDoc, setChatDoc] = useState<ApiDocument | null>(null);
+
   async function handleDelete(docId: string) {
     if (!confirm('Remove this document?')) return;
     await api.documents.delete(docId);
@@ -302,49 +306,279 @@ function UploadedDocsTable({
   if (docs.length === 0) return null;
 
   return (
-    <table className="w-full text-sm border-collapse">
-      <thead>
-        <tr className="border-b border-gray-200">
-          {['DOC', 'TITLE', 'REV', 'STATUS', 'ACTIONS'].map(h => (
-            <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-2 pr-4">
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {docs.map(d => (
-          <tr key={d._id} className="border-b border-gray-100 hover:bg-gray-50">
-            <td className="py-3 pr-4 font-mono text-xs text-indigo-600 font-semibold">{d.docType}</td>
-            <td className="py-3 pr-4 text-sm text-gray-800">{d.title}</td>
-            <td className="py-3 pr-4 text-sm text-gray-500">{d.rev}</td>
-            <td className={`py-3 pr-4 text-sm font-medium ${STATUS_STYLES[d.status]}`}>{d.status}</td>
-            <td className="py-3">
-              <div className="flex items-center gap-2">
-                {d.hasFile && d.presignedUrl ? (
-                  <a
-                    href={d.presignedUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1 text-xs font-medium text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-50"
-                  >
-                    View
-                  </a>
-                ) : (
-                  <span className="px-3 py-1 text-xs text-gray-300 border border-gray-100 rounded-md">View</span>
-                )}
-                <button
-                  onClick={() => handleDelete(d._id)}
-                  className="px-3 py-1 text-xs font-medium text-red-500 border border-red-100 rounded-md hover:bg-red-50"
-                >
-                  Delete
-                </button>
-              </div>
-            </td>
+    <>
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="border-b border-gray-200">
+            {['DOC', 'TITLE', 'REV', 'STATUS', 'ACTIONS'].map(h => (
+              <th key={h} className="text-[10px] font-bold tracking-widest text-gray-400 text-left pb-2 pr-4">
+                {h}
+              </th>
+            ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {docs.map(d => (
+            <tr key={d._id} className="border-b border-gray-100 hover:bg-gray-50">
+              <td className="py-3 pr-4 font-mono text-xs text-indigo-600 font-semibold">{d.docType}</td>
+              <td className="py-3 pr-4 text-sm text-gray-800">{d.title}</td>
+              <td className="py-3 pr-4 text-sm text-gray-500">{d.rev}</td>
+              <td className={`py-3 pr-4 text-sm font-medium ${STATUS_STYLES[d.status]}`}>{d.status}</td>
+              <td className="py-3">
+                <div className="flex items-center gap-2">
+                  {d.hasFile && d.presignedUrl ? (
+                    <a
+                      href={d.presignedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1 text-xs font-medium text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-50"
+                    >
+                      View
+                    </a>
+                  ) : (
+                    <span className="px-3 py-1 text-xs text-gray-300 border border-gray-100 rounded-md">View</span>
+                  )}
+                  {d.hasFile ? (
+                    <button
+                      onClick={() => setChatDoc(d)}
+                      className="px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-200 rounded-md hover:bg-emerald-50"
+                    >
+                      Chat
+                    </button>
+                  ) : (
+                    <span className="px-3 py-1 text-xs text-gray-300 border border-gray-100 rounded-md">Chat</span>
+                  )}
+                  <button
+                    onClick={() => handleDelete(d._id)}
+                    className="px-3 py-1 text-xs font-medium text-red-500 border border-red-100 rounded-md hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {chatDoc && <DocChatModal doc={chatDoc} onClose={() => setChatDoc(null)} />}
+    </>
+  );
+}
+
+const PROVIDER_LABELS: Record<LlmProvider, string> = {
+  gemini: 'Gemini',
+  openai: 'OpenAI',
+};
+
+function ProviderToggle({ provider, onChange }: { provider: LlmProvider; onChange: (p: LlmProvider) => void }) {
+  return (
+    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+      {(['gemini', 'openai'] as const).map(p => (
+        <button
+          key={p}
+          onClick={() => onChange(p)}
+          className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
+            provider === p ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {PROVIDER_LABELS[p]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Chat with a document (PageIndex — reasoning over a page-range tree, no vectors) ──
+function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const bodyRef    = useRef<HTMLDivElement>(null);
+
+  const [pageIndex, setPageIndex]       = useState<ApiPageIndex | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [building, setBuilding]         = useState(false);
+  const [buildErr, setBuildErr]         = useState<string | null>(null);
+  const [provider, setProvider]         = useState<LlmProvider>('gemini');
+
+  const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string; pagesUsed?: number[] }[]>([]);
+  const [input, setInput]       = useState('');
+  const [sending, setSending]   = useState(false);
+  const [chatErr, setChatErr]   = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.pageIndex.get(doc._id)
+      .then(res => {
+        if (cancelled) return;
+        setPageIndex(res);
+        if (res.status === 'done') setProvider(res.provider);
+      })
+      .catch(e => { if (!cancelled) setBuildErr(String(e)); })
+      .finally(() => { if (!cancelled) setLoadingStatus(false); });
+    return () => { cancelled = true; };
+  }, [doc._id]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, sending]);
+
+  async function handleBuild() {
+    setBuilding(true);
+    setBuildErr(null);
+    try {
+      const res = await api.pageIndex.build(doc._id, provider);
+      setPageIndex(res);
+    } catch (e) {
+      setBuildErr(String(e));
+    } finally {
+      setBuilding(false);
+    }
+  }
+
+  async function handleSend() {
+    const text = input.trim();
+    if (!text || sending) return;
+    const history = messages.map(m => ({ role: m.role, text: m.text }));
+    setMessages(prev => [...prev, { role: 'user', text }]);
+    setInput('');
+    setChatErr(null);
+    setSending(true);
+    try {
+      const res = await api.pageIndex.chat(doc._id, text, history, provider);
+      setMessages(prev => [...prev, { role: 'model', text: res.answer, pagesUsed: res.pagesUsed }]);
+    } catch (e) {
+      setChatErr(String(e));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const ready = pageIndex?.status === 'done';
+
+  return (
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-50 flex items-start justify-end bg-black/30"
+      onClick={e => { if (e.target === overlayRef.current) onClose(); }}
+    >
+      <div className="h-full w-full max-w-xl bg-white shadow-2xl flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-gray-100 shrink-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="font-mono text-[11px] font-bold text-white bg-slate-800 px-2 py-0.5 rounded shrink-0">
+                  {doc.docType}
+                </span>
+                <span className="text-xs text-gray-400 truncate">{doc.title}</span>
+              </div>
+              <p className="text-sm font-bold text-gray-900 leading-snug">Chat with this document</p>
+              {ready && pageIndex && (
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {pageIndex.pageCount} pages indexed · built with {PROVIDER_LABELS[pageIndex.provider]}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 text-sm"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
+              {ready ? 'Answer with' : 'Build index with'}
+            </span>
+            <ProviderToggle provider={provider} onChange={setProvider} />
+          </div>
+        </div>
+
+        {/* Body */}
+        <div ref={bodyRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+          {loadingStatus ? (
+            <p className="text-sm text-gray-400">Checking index status…</p>
+          ) : !ready ? (
+            <div className="text-center py-10">
+              <p className="text-sm text-gray-600 mb-4">
+                {pageIndex?.status === 'failed'
+                  ? `Last index build failed${pageIndex.error ? `: ${pageIndex.error}` : '.'} Try again.`
+                  : 'No chat index yet for this document. Build one to start asking questions.'}
+              </p>
+              <button
+                onClick={handleBuild}
+                disabled={building}
+                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {building ? 'Building index… this can take a minute' : 'Build chat index'}
+              </button>
+              {buildErr && <p className="text-xs text-red-500 mt-3">{buildErr}</p>}
+            </div>
+          ) : (
+            <>
+              {pageIndex.docSummary && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600 leading-relaxed">
+                  {pageIndex.docSummary}
+                </div>
+              )}
+              {messages.length === 0 && (
+                <p className="text-xs text-gray-400 italic">
+                  Ask anything about this document — answers cite the pages they came from.
+                </p>
+              )}
+              {messages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={
+                      m.role === 'user'
+                        ? 'max-w-[85%] bg-indigo-600 text-white text-sm rounded-2xl rounded-br-sm px-4 py-2.5'
+                        : 'max-w-[85%] bg-gray-100 text-gray-800 text-sm rounded-2xl rounded-bl-sm px-4 py-2.5'
+                    }
+                  >
+                    <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
+                    {m.pagesUsed && m.pagesUsed.length > 0 && (
+                      <p className={`text-[10px] mt-1.5 ${m.role === 'user' ? 'text-indigo-200' : 'text-gray-400'}`}>
+                        Pages: {m.pagesUsed.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {sending && <p className="text-xs text-gray-400 italic">Thinking…</p>}
+              {chatErr && <p className="text-xs text-red-500">{chatErr}</p>}
+            </>
+          )}
+        </div>
+
+        {/* Input */}
+        {ready && (
+          <div className="shrink-0 border-t border-gray-100 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <input
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                placeholder="Ask about this document…"
+                disabled={sending}
+                className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-50"
+              />
+              <button
+                onClick={handleSend}
+                disabled={sending || !input.trim()}
+                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

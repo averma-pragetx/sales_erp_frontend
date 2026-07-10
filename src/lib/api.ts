@@ -51,6 +51,40 @@ export interface ApiDocument {
   updatedAt: string;
 }
 
+// ─── PageIndex chatbot ──────────────────────────────────────────────────────
+
+export interface ApiPageIndexNode {
+  nodeId: string;
+  title: string;
+  startPage: number;
+  endPage: number;
+  summary: string;
+  nodes: ApiPageIndexNode[];
+}
+
+export type LlmProvider = 'gemini' | 'openai';
+
+export interface ApiPageIndex {
+  documentId: string;
+  status: 'pending' | 'processing' | 'done' | 'failed';
+  error: string;
+  provider: LlmProvider;
+  pageCount: number;
+  docSummary: string;
+  tree: ApiPageIndexNode[];
+  builtAt: string | null;
+}
+
+export interface ApiPageIndexChatTurn {
+  role: 'user' | 'model';
+  text: string;
+}
+
+export interface ApiPageIndexChatResult {
+  answer: string;
+  pagesUsed: number[];
+}
+
 export interface ApiAnalysis {
   docId: string;
   inquiryId: string;
@@ -543,6 +577,21 @@ export const api = {
       request<ApiStage8>(`/api/stage8/${encodeURIComponent(inquiryId)}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
+      }),
+  },
+
+  pageIndex: {
+    get: (docId: string) =>
+      request<ApiPageIndex>(`/api/pageindex/${docId}`),
+    build: (docId: string, provider: LlmProvider) =>
+      request<ApiPageIndex>(`/api/pageindex/${docId}/build`, {
+        method: 'POST',
+        body: JSON.stringify({ provider }),
+      }),
+    chat: (docId: string, message: string, history: ApiPageIndexChatTurn[], provider: LlmProvider) =>
+      request<ApiPageIndexChatResult>(`/api/pageindex/${docId}/chat`, {
+        method: 'POST',
+        body: JSON.stringify({ message, history, provider }),
       }),
   },
 };
