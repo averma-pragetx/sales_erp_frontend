@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { marked } from 'marked';
 import jsPDF from 'jspdf';
-import { Pencil, Trash2, Bot } from 'lucide-react';
+import { Pencil, Trash2, Bot, ArrowUp } from 'lucide-react';
 
 import type { Inquiry } from '../types';
 import type { Stage } from '../data/stages';
@@ -299,6 +299,7 @@ function UploadedDocsTable({
   async function handleDelete(docId: string) {
     if (!confirm('Remove this document?')) return;
     await api.documents.delete(docId);
+    clearStoredMessages(docId); // don't leave an orphaned chat thread behind
     onDocumentsChange(docs.filter(d => d._id !== docId));
   }
 
@@ -356,12 +357,66 @@ const PROVIDER_LABELS: Record<LlmProvider, string> = {
   openai: 'OpenAI',
 };
 
+// ─── Chat history — localStorage only, keyed per document ────────────────────
+// Deliberately client-side and per-browser, not a backend feature: this is a
+// convenience so closing the chat / reloading the page doesn't lose the
+// thread, not a shared team record (that's what PageIndexTree's version
+// history is for). Capped per-document so a long-lived conversation can't
+// grow the stored payload — and the per-request LLM history — without bound.
+
+interface StoredChatMessage {
+  role: 'user' | 'model';
+  text: string;
+  pagesUsed?: number[];
+  provider?: LlmProvider;
+}
+
+const CHAT_STORAGE_PREFIX = 'pageindex-chat:';
+const MAX_STORED_MESSAGES = 40;
+
+function chatStorageKey(documentId: string): string {
+  return `${CHAT_STORAGE_PREFIX}${documentId}`;
+}
+
+function loadStoredMessages(documentId: string): StoredChatMessage[] {
+  if (!documentId) return [];
+  try {
+    const raw = localStorage.getItem(chatStorageKey(documentId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return []; // corrupted or inaccessible storage — start fresh rather than crash
+  }
+}
+
+function saveStoredMessages(documentId: string, messages: StoredChatMessage[]): void {
+  try {
+    if (messages.length === 0) {
+      localStorage.removeItem(chatStorageKey(documentId));
+      return;
+    }
+    localStorage.setItem(chatStorageKey(documentId), JSON.stringify(messages.slice(-MAX_STORED_MESSAGES)));
+  } catch {
+    // Quota exceeded or storage disabled (private mode, etc.) — chat still
+    // works for this session, it just won't survive a reload.
+  }
+}
+
+// Cleanup hook: call this wherever a document is deleted so its chat thread
+// doesn't linger in localStorage as an orphaned entry.
+function clearStoredMessages(documentId: string): void {
+  try {
+    localStorage.removeItem(chatStorageKey(documentId));
+  } catch { /* ignore */ }
+}
+
 // True when this message is a model answer whose provider differs from the
 // most recent prior model answer's provider — i.e. the user switched LLMs
 // between these two turns. The full conversation history is still sent to
 // whichever provider answers next (see handleSend), this is purely a UI cue.
 function providerSwitchedAt(
-  messages: { role: 'user' | 'model'; provider?: LlmProvider }[],
+  messages: StoredChatMessage[],
   index: number,
 ): boolean {
   const current = messages[index];
@@ -375,21 +430,17 @@ function providerSwitchedAt(
   return false;
 }
 
-function ProviderToggle({ provider, onChange }: { provider: LlmProvider; onChange: (p: LlmProvider) => void }) {
+function ProviderDropdown({ provider, onChange }: { provider: LlmProvider; onChange: (p: LlmProvider) => void }) {
   return (
-    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+    <select
+      value={provider}
+      onChange={e => onChange(e.target.value as LlmProvider)}
+      className="text-[11px] h-10 font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+    >
       {(['gemini', 'openai'] as const).map(p => (
-        <button
-          key={p}
-          onClick={() => onChange(p)}
-          className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-            provider === p ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          {PROVIDER_LABELS[p]}
-        </button>
+        <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
       ))}
-    </div>
+    </select>
   );
 }
 
@@ -454,8 +505,9 @@ function VersionHistoryPanel({ versions, loading, error }: { versions: ApiPageIn
 function DocChatModal({ documents, onClose }: { documents: ApiDocument[]; onClose: () => void }) {
   const chatDocs = documents.filter(d => d.hasFile);
 
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const bodyRef    = useRef<HTMLDivElement>(null);
+  const overlayRef  = useRef<HTMLDivElement>(null);
+  const bodyRef     = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [selectedDocId, setSelectedDocId] = useState<string>(chatDocs[0]?._id ?? '');
   const doc = chatDocs.find(d => d._id === selectedDocId) ?? chatDocs[0] ?? null;
@@ -468,7 +520,7 @@ function DocChatModal({ documents, onClose }: { documents: ApiDocument[]; onClos
   const [repairErr, setRepairErr]       = useState<string | null>(null);
   const [provider, setProvider]         = useState<LlmProvider>('gemini');
 
-  const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string; pagesUsed?: number[]; provider?: LlmProvider }[]>([]);
+  const [messages, setMessages] = useState<StoredChatMessage[]>(() => loadStoredMessages(chatDocs[0]?._id ?? ''));
   const [input, setInput]       = useState('');
   const [sending, setSending]   = useState(false);
   const [chatErr, setChatErr]   = useState<string | null>(null);
@@ -503,16 +555,25 @@ function DocChatModal({ documents, onClose }: { documents: ApiDocument[]; onClos
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
 
+  // Persist to localStorage whenever the thread changes, for whichever
+  // document is currently selected.
+  useEffect(() => {
+    if (!doc) return;
+    saveStoredMessages(doc._id, messages);
+  }, [doc, messages]);
+
   // Switching documents resets everything scoped to the previous one — done
   // here (a plain event handler), not in an effect, so it's a single
   // synchronous batch instead of a cascade of effect-triggered renders.
+  // Messages are loaded from storage rather than cleared, so re-selecting a
+  // document you've already chatted with picks the thread back up.
   function handleSelectDoc(newId: string) {
     setSelectedDocId(newId);
     setPageIndex(null);
     setLoadingStatus(true);
     setBuildErr(null);
     setRepairErr(null);
-    setMessages([]);
+    setMessages(loadStoredMessages(newId));
     setChatErr(null);
     setShowHistory(false);
     setVersions([]);
@@ -575,6 +636,7 @@ function DocChatModal({ documents, onClose }: { documents: ApiDocument[]; onClos
     const history = messages.map(m => ({ role: m.role, text: m.text }));
     setMessages(prev => [...prev, { role: 'user', text }]);
     setInput('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setChatErr(null);
     setSending(true);
     try {
@@ -696,9 +758,7 @@ function DocChatModal({ documents, onClose }: { documents: ApiDocument[]; onClos
                     </span>
                   </button>
                   {!summaryCollapsed && (
-                    <div className="p-3 whitespace-pre-wrap">
-                      {pageIndex.docSummary}
-                    </div>
+                    <div className="chat-markdown p-3" dangerouslySetInnerHTML={{ __html: marked.parse(pageIndex.docSummary) as string }} />
                   )}
                 </div>
               )}
@@ -740,7 +800,11 @@ function DocChatModal({ documents, onClose }: { documents: ApiDocument[]; onClos
                       {m.role === 'model' && m.provider && (
                         <p className="text-[10px] font-semibold text-gray-400 mb-1">{PROVIDER_LABELS[m.provider]}</p>
                       )}
-                      <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
+                      {m.role === 'model' ? (
+                        <div className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(m.text) as string }} />
+                      ) : (
+                        <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
+                      )}
                       {m.pagesUsed && m.pagesUsed.length > 0 && (
                         <p className={`text-[10px] mt-1.5 ${m.role === 'user' ? 'text-indigo-200' : 'text-gray-400'}`}>
                           Pages consulted: {m.pagesUsed.join(', ')}
@@ -759,22 +823,30 @@ function DocChatModal({ documents, onClose }: { documents: ApiDocument[]; onClos
         {/* Input */}
         {ready && (
           <div className="shrink-0 border-t border-gray-100 px-5 py-3">
-            <div className="flex items-center gap-2">
-              <input
+            <div className="flex items-end gap-2">
+              <textarea
+                ref={textareaRef}
                 value={input}
-                onChange={e => setInput(e.target.value)}
+                onChange={e => {
+                  setInput(e.target.value);
+                  const el = e.target;
+                  el.style.height = 'auto';
+                  el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+                }}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                 placeholder="Ask about this document…"
                 disabled={sending}
-                className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-50"
+                rows={1}
+                className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none overflow-y-auto leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:opacity-50"
               />
-              <ProviderToggle provider={provider} onChange={setProvider} />
+              <ProviderDropdown provider={provider} onChange={setProvider} />
               <button
                 onClick={handleSend}
                 disabled={sending || !input.trim()}
-                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                title="Send"
+                className="shrink-0 w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 disabled:opacity-50"
               >
-                Send
+                <ArrowUp size={16} />
               </button>
             </div>
           </div>

@@ -57,3 +57,21 @@ body {
 .proposal-body th   { background: #f8fafc; font-weight: 600; text-align: left; padding: 6px 10px; border: 1px solid #e2e8f0; color: #374151; }
 .proposal-body td   { padding: 5px 10px; border: 1px solid #e2e8f0; vertical-align: top; }
 .proposal-body tr:nth-child(even) td { background: #fafafa; }
+
+/* ── Chat message body (compact — same markdown source as proposal-body, tighter spacing for a bubble) ── */
+.chat-markdown { font-size: 0.875rem; line-height: 1.6; }
+.chat-markdown > *:first-child { margin-top: 0; }
+.chat-markdown > *:last-child  { margin-bottom: 0; }
+.chat-markdown p  { margin: 0.5rem 0; }
+.chat-markdown ul, .chat-markdown ol { margin: 0.4rem 0; padding-left: 1.25rem; }
+.chat-markdown li { margin: 0.15rem 0; }
+.chat-markdown strong { font-weight: 700; }
+.chat-markdown em     { font-style: italic; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { font-size: 0.9375rem; font-weight: 700; margin: 0.75rem 0 0.35rem; }
+.chat-markdown hr { border: none; border-top: 1px solid rgba(0, 0, 0, 0.1); margin: 0.6rem 0; }
+.chat-markdown code { background: rgba(0, 0, 0, 0.08); border-radius: 4px; padding: 0.1em 0.35em; font-size: 0.8125rem; font-family: ui-monospace, monospace; }
+.chat-markdown pre { background: rgba(0, 0, 0, 0.08); border-radius: 6px; padding: 0.5rem 0.65rem; overflow-x: auto; margin: 0.5rem 0; }
+.chat-markdown pre code { background: none; padding: 0; }
+.chat-markdown table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.8125rem; }
+.chat-markdown th, .chat-markdown td { padding: 4px 8px; border: 1px solid rgba(0, 0, 0, 0.12); text-align: left; }
+.chat-markdown a { text-decoration: underline; }
