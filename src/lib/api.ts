@@ -72,7 +72,20 @@ export interface ApiPageIndex {
   pageCount: number;
   docSummary: string;
   tree: ApiPageIndexNode[];
+  qualityFlags: string[];
+  currentVersion: number;
   builtAt: string | null;
+}
+
+export interface ApiPageIndexVersion {
+  versionNumber: number;
+  action: 'build' | 'repair';
+  provider: LlmProvider;
+  pageCount: number;
+  docSummary: string;
+  tree: ApiPageIndexNode[];
+  qualityFlags: string[];
+  createdAt: string;
 }
 
 export interface ApiPageIndexChatTurn {
@@ -588,6 +601,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ provider }),
       }),
+    repair: (docId: string, provider: LlmProvider) =>
+      request<ApiPageIndex>(`/api/pageindex/${docId}/repair`, {
+        method: 'POST',
+        body: JSON.stringify({ provider }),
+      }),
+    versions: (docId: string) =>
+      request<ApiPageIndexVersion[]>(`/api/pageindex/${docId}/versions`),
     chat: (docId: string, message: string, history: ApiPageIndexChatTurn[], provider: LlmProvider) =>
       request<ApiPageIndexChatResult>(`/api/pageindex/${docId}/chat`, {
         method: 'POST',

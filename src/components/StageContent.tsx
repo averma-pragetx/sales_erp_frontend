@@ -10,6 +10,7 @@ import type {
   ApiDocument,
   ApiInquiry,
   ApiPageIndex,
+  ApiPageIndexVersion,
   ApiSection,
   LlmProvider,
   ApiSectionsByDoc,
@@ -388,6 +389,63 @@ function ProviderToggle({ provider, onChange }: { provider: LlmProvider; onChang
   );
 }
 
+const VERSION_ACTION_LABELS: Record<ApiPageIndexVersion['action'], string> = {
+  build:  'Built',
+  repair: 'Repaired',
+};
+
+function countSections(tree: ApiPageIndex['tree']): number {
+  return tree.reduce((n, s) => n + 1 + s.nodes.length, 0);
+}
+
+// ─── Audit trail — every build/repair is an immutable version row, original included ──
+function VersionHistoryPanel({ versions, loading, error }: { versions: ApiPageIndexVersion[]; loading: boolean; error: string | null }) {
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  if (loading) return <p className="text-xs text-gray-400 px-1">Loading history…</p>;
+  if (error) return <p className="text-xs text-red-500 px-1">{error}</p>;
+  if (versions.length === 0) return <p className="text-xs text-gray-400 px-1">No history yet.</p>;
+
+  return (
+    <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+      {versions.map(v => {
+        const isOpen = expanded === v.versionNumber;
+        return (
+          <div key={v.versionNumber}>
+            <button
+              onClick={() => setExpanded(isOpen ? null : v.versionNumber)}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-gray-50"
+            >
+              <span className="flex items-center gap-2 text-xs">
+                <span className="font-mono font-semibold text-gray-700">v{v.versionNumber}</span>
+                <span className="text-gray-600">{VERSION_ACTION_LABELS[v.action]}</span>
+                <span className="text-gray-400">· {PROVIDER_LABELS[v.provider]}</span>
+                {v.qualityFlags.length > 0 && (
+                  <span className="text-amber-600">· {v.qualityFlags.length} warning{v.qualityFlags.length === 1 ? '' : 's'}</span>
+                )}
+              </span>
+              <span className="text-[10px] text-gray-400 shrink-0">
+                {new Date(v.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </button>
+            {isOpen && (
+              <div className="px-3 pb-3 text-xs text-gray-600 space-y-2">
+                <p className="leading-relaxed">{v.docSummary || <span className="italic text-gray-400">No summary.</span>}</p>
+                <p className="text-gray-400">{countSections(v.tree)} section(s) · {v.pageCount} pages</p>
+                {v.qualityFlags.length > 0 && (
+                  <ul className="list-disc pl-4 text-amber-700 space-y-0.5">
+                    {v.qualityFlags.map((f, i) => <li key={i}>{f}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Chat with a document (PageIndex — reasoning over a page-range tree, no vectors) ──
 function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void }) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -397,12 +455,19 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [building, setBuilding]         = useState(false);
   const [buildErr, setBuildErr]         = useState<string | null>(null);
+  const [repairing, setRepairing]       = useState(false);
+  const [repairErr, setRepairErr]       = useState<string | null>(null);
   const [provider, setProvider]         = useState<LlmProvider>('gemini');
 
   const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string; pagesUsed?: number[] }[]>([]);
   const [input, setInput]       = useState('');
   const [sending, setSending]   = useState(false);
   const [chatErr, setChatErr]   = useState<string | null>(null);
+
+  const [showHistory, setShowHistory]     = useState(false);
+  const [versions, setVersions]           = useState<ApiPageIndexVersion[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [versionsErr, setVersionsErr]     = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -427,16 +492,49 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
 
+  async function loadVersions() {
+    setLoadingVersions(true);
+    setVersionsErr(null);
+    try {
+      setVersions(await api.pageIndex.versions(doc._id));
+    } catch (e) {
+      setVersionsErr(String(e));
+    } finally {
+      setLoadingVersions(false);
+    }
+  }
+
+  function toggleHistory() {
+    const next = !showHistory;
+    setShowHistory(next);
+    if (next) loadVersions();
+  }
+
   async function handleBuild() {
     setBuilding(true);
     setBuildErr(null);
     try {
       const res = await api.pageIndex.build(doc._id, provider);
       setPageIndex(res);
+      if (showHistory) loadVersions();
     } catch (e) {
       setBuildErr(String(e));
     } finally {
       setBuilding(false);
+    }
+  }
+
+  async function handleRepair() {
+    setRepairing(true);
+    setRepairErr(null);
+    try {
+      const res = await api.pageIndex.repair(doc._id, provider);
+      setPageIndex(res);
+      if (showHistory) loadVersions();
+    } catch (e) {
+      setRepairErr(String(e));
+    } finally {
+      setRepairing(false);
     }
   }
 
@@ -459,6 +557,7 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
   }
 
   const ready = pageIndex?.status === 'done';
+  const fixableFlags = pageIndex?.qualityFlags.filter(f => !f.startsWith('Document exceeded')) ?? [];
 
   return (
     <div
@@ -484,12 +583,24 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
                 </p>
               )}
             </div>
-            <button
-              onClick={onClose}
-              className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 text-sm"
-            >
-              ✕
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              {ready && pageIndex && pageIndex.currentVersion > 0 && (
+                <button
+                  onClick={toggleHistory}
+                  className={`px-2 py-1 text-[11px] font-semibold rounded-md ${
+                    showHistory ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  History ({pageIndex.currentVersion})
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 text-sm"
+              >
+                ✕
+              </button>
+            </div>
           </div>
           <div className="flex items-center justify-between mt-3">
             <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
@@ -521,9 +632,32 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
             </div>
           ) : (
             <>
+              {showHistory && (
+                <VersionHistoryPanel versions={versions} loading={loadingVersions} error={versionsErr} />
+              )}
               {pageIndex.docSummary && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600 leading-relaxed">
                   {pageIndex.docSummary}
+                </div>
+              )}
+              {pageIndex.qualityFlags.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 leading-relaxed">
+                  <div className="flex items-start justify-between gap-3 mb-1">
+                    <p className="font-semibold">Index quality warnings</p>
+                    {fixableFlags.length > 0 && (
+                      <button
+                        onClick={handleRepair}
+                        disabled={repairing}
+                        className="shrink-0 px-2.5 py-1 text-[11px] font-semibold text-amber-900 bg-amber-100 border border-amber-300 rounded-md hover:bg-amber-200 disabled:opacity-50"
+                      >
+                        {repairing ? 'Fixing…' : 'Fix warnings'}
+                      </button>
+                    )}
+                  </div>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    {pageIndex.qualityFlags.map((f, i) => <li key={i}>{f}</li>)}
+                  </ul>
+                  {repairErr && <p className="text-red-600 mt-1.5">{repairErr}</p>}
                 </div>
               )}
               {messages.length === 0 && (
@@ -543,7 +677,7 @@ function DocChatModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void 
                     <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
                     {m.pagesUsed && m.pagesUsed.length > 0 && (
                       <p className={`text-[10px] mt-1.5 ${m.role === 'user' ? 'text-indigo-200' : 'text-gray-400'}`}>
-                        Pages: {m.pagesUsed.join(', ')}
+                        Pages consulted: {m.pagesUsed.join(', ')}
                       </p>
                     )}
                   </div>
