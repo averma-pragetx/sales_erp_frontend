@@ -138,38 +138,37 @@ export interface ExtractInquiryResult {
 
 export type NewInquiryPayload = Omit<ApiInquiry, '_id' | 'createdAt'>;
 
-// ─── Leads (Lead Engine) ────────────────────────────────────────────────────
+// ─── Scraped Tenders ──────────────────────────────────────────
 
-export interface ApiLead {
-  _id: string;
-  leadId: string;
+export interface ApiScrapedTender {
+  tenderName: string;
+  tenderId: string;
   client: string;
-  clientType: string;
-  tenderRef: string;
   title: string;
   source: string;
   value: number;
   currency: 'USD' | 'INR';
   valueUnit: 'Mn' | 'Cr';
   dueDate: string;
-  avlStatus: 'approved' | 'not_registered' | 'review';
   score: number | null;
-  assignedTo: string;
-  notes: string;
+  analysed: boolean;
+  zipUrl: string | null;
   status: 'new' | 'approved' | 'rejected' | 'pushed';
   pushedInquiryId: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export type NewLeadPayload = Omit<
-  ApiLead,
-  '_id' | 'createdAt' | 'updatedAt' | 'status' | 'pushedInquiryId'
->;
-
 export interface PushToSalesResult {
-  lead: ApiLead;
+  tender: ApiScrapedTender;
   inquiry: ApiInquiry;
+}
+
+export interface ApiScrapedTenderPage {
+  items: ApiScrapedTender[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 // Sections
@@ -501,17 +500,17 @@ export const api = {
       }),
   },
 
-  leads: {
-    list:   () => request<ApiLead[]>('/api/leads'),
-    get:    (id: string) => request<ApiLead>(`/api/leads/${encodeURIComponent(id)}`),
-    create: (data: NewLeadPayload) =>
-      request<ApiLead>('/api/leads', { method: 'POST', body: JSON.stringify(data) }),
-    approve: (id: string) =>
-      request<ApiLead>(`/api/leads/${encodeURIComponent(id)}/approve`, { method: 'PATCH' }),
-    reject: (id: string) =>
-      request<ApiLead>(`/api/leads/${encodeURIComponent(id)}/reject`, { method: 'PATCH' }),
-    pushToSales: (id: string) =>
-      request<PushToSalesResult>(`/api/leads/${encodeURIComponent(id)}/push-to-sales`, { method: 'POST' }),
+  scrapedTenders: {
+    list: (page = 1, limit = 20) =>
+      request<ApiScrapedTenderPage>(`/api/scraped-tenders?page=${page}&limit=${limit}`),
+    analyse: (tenderName: string) =>
+      request<ApiScrapedTender>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/analyse`, { method: 'POST' }),
+    approve: (tenderName: string) =>
+      request<ApiScrapedTender>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/approve`, { method: 'PATCH' }),
+    reject: (tenderName: string) =>
+      request<ApiScrapedTender>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/reject`, { method: 'PATCH' }),
+    pushToSales: (tenderName: string) =>
+      request<PushToSalesResult>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/push-to-sales`, { method: 'POST' }),
   },
 
   documents: {

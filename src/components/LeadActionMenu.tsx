@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { ApiLead } from '../lib/api';
+import type { ApiScrapedTender } from '../lib/api';
 
 interface Props {
-  lead: ApiLead;
+  tender: ApiScrapedTender;
   busy: boolean;
   onApprove: () => void;
   onReject: () => void;
@@ -13,7 +13,7 @@ interface Props {
 const MENU_WIDTH = 176;
 const MENU_HEIGHT = 116;
 
-export default function LeadActionMenu({ lead, busy, onApprove, onReject, onPushToSales }: Props) {
+export default function LeadActionMenu({ tender, busy, onApprove, onReject, onPushToSales }: Props) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -48,7 +48,7 @@ export default function LeadActionMenu({ lead, busy, onApprove, onReject, onPush
     };
   }, [open]);
 
-  const isTerminal = lead.status === 'pushed' || lead.status === 'rejected';
+  const isTerminal = tender.status === 'pushed' || tender.status === 'rejected';
 
   function run(fn: () => void) {
     setOpen(false);
@@ -87,7 +87,7 @@ export default function LeadActionMenu({ lead, busy, onApprove, onReject, onPush
           </button>
           <button
             type="button"
-            disabled={isTerminal || lead.status === 'approved'}
+            disabled={isTerminal || tender.status === 'approved'}
             onClick={() => run(onApprove)}
             className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-green-50 hover:text-green-700 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gray-700"
           >

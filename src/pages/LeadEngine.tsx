@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { ApiLead } from '../lib/api';
+import type { ApiScrapedTender } from '../lib/api';
 import { api } from '../lib/api';
-import AddLeadModal from '../components/AddLeadModal';
 import LeadActionMenu from '../components/LeadActionMenu';
 
 function formatValue(value: number, currency: 'USD' | 'INR', unit: 'Mn' | 'Cr'): string {
@@ -46,72 +45,77 @@ function ScoreRing({ score }: { score: number | null }) {
   );
 }
 
-const AVL_STYLES: Record<ApiLead['avlStatus'], { label: string; className: string }> = {
-  approved:       { label: 'APPROVED',       className: 'bg-green-50 text-green-700 border border-green-200' },
-  review:         { label: 'REVIEW',         className: 'bg-amber-50 text-amber-700 border border-amber-200' },
-  not_registered: { label: 'NOT REGISTERED', className: 'bg-red-50 text-red-700 border border-red-200' },
-};
-
-const STATUS_STYLES: Record<ApiLead['status'], { label: string; className: string }> = {
+const STATUS_STYLES: Record<ApiScrapedTender['status'], { label: string; className: string }> = {
   new:      { label: 'New',            className: 'bg-gray-100 text-gray-600' },
   approved: { label: 'Approved',       className: 'bg-blue-100 text-blue-700' },
   rejected: { label: 'Rejected',       className: 'bg-red-100 text-red-700' },
   pushed:   { label: 'Pushed to Sales', className: 'bg-green-100 text-green-700' },
 };
 
+const PAGE_SIZE = 10;
+
 export default function LeadEngine() {
   const navigate = useNavigate();
-  const [leads, setLeads] = useState<ApiLead[]>([]);
+  const [tenders, setTenders] = useState<ApiScrapedTender[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showAddModal, setShowAddModal] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
-    api.leads.list()
-      .then(setLeads)
+    api.scrapedTenders.list(page, PAGE_SIZE)
+      .then(({ items, total }) => { setTenders(items); setTotal(total); })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [page]);
 
-  function handleSaved(lead: ApiLead) {
-    setLeads(prev => [lead, ...prev]);
-    setShowAddModal(false);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  function updateTender(updated: ApiScrapedTender) {
+    setTenders(prev => prev.map(t => (t.tenderName === updated.tenderName ? updated : t)));
   }
 
-  function updateLead(updated: ApiLead) {
-    setLeads(prev => prev.map(l => (l.leadId === updated.leadId ? updated : l)));
-  }
-
-  async function handleApprove(lead: ApiLead) {
-    setBusyId(lead.leadId);
+  async function handleAnalyse(tender: ApiScrapedTender) {
+    setBusyId(tender.tenderName);
     try {
-      updateLead(await api.leads.approve(lead.leadId));
+      updateTender(await api.scrapedTenders.analyse(tender.tenderName));
     } catch (e) {
-      alert(`Failed to approve lead: ${e}`);
+      alert(`Failed to analyse tender: ${e}`);
     } finally {
       setBusyId(null);
     }
   }
 
-  async function handleReject(lead: ApiLead) {
-    setBusyId(lead.leadId);
+  async function handleApprove(tender: ApiScrapedTender) {
+    setBusyId(tender.tenderName);
     try {
-      updateLead(await api.leads.reject(lead.leadId));
+      updateTender(await api.scrapedTenders.approve(tender.tenderName));
     } catch (e) {
-      alert(`Failed to reject lead: ${e}`);
+      alert(`Failed to approve tender: ${e}`);
     } finally {
       setBusyId(null);
     }
   }
 
-  async function handlePushToSales(lead: ApiLead) {
-    setBusyId(lead.leadId);
+  async function handleReject(tender: ApiScrapedTender) {
+    setBusyId(tender.tenderName);
     try {
-      const { lead: updated } = await api.leads.pushToSales(lead.leadId);
-      updateLead(updated);
+      updateTender(await api.scrapedTenders.reject(tender.tenderName));
     } catch (e) {
-      alert(`Failed to push lead to sales: ${e}`);
+      alert(`Failed to reject tender: ${e}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handlePushToSales(tender: ApiScrapedTender) {
+    setBusyId(tender.tenderName);
+    try {
+      const { tender: updated } = await api.scrapedTenders.pushToSales(tender.tenderName);
+      updateTender(updated);
+    } catch (e) {
+      alert(`Failed to push tender to sales: ${e}`);
     } finally {
       setBusyId(null);
     }
@@ -121,20 +125,14 @@ export default function LeadEngine() {
     <div className="p-6">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Lead Engine</h1>
+          <h1 className="text-lg font-semibold text-gray-900">Tender Engine</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Leads registered for screening. Push approved leads to the Sales Pipeline once ready.
+            Tenders scraped and screened. Push approved tenders to the Sales Pipeline once ready.
           </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-blue-600 hover:bg-blue-700 shrink-0"
-        >
-          + Add Lead
-        </button>
       </div>
 
-      {loading && <p className="text-sm text-gray-400">Loading leads…</p>}
+      {loading && <p className="text-sm text-gray-400">Loading tenders…</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {!loading && !error && (
@@ -143,63 +141,62 @@ export default function LeadEngine() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 text-[11px] uppercase tracking-wide text-gray-400">
-                  <th className="text-left font-semibold px-4 py-2.5">Lead</th>
+                  <th className="text-left font-semibold px-4 py-2.5">Tender ID</th>
                   <th className="text-left font-semibold px-4 py-2.5">Client</th>
-                  <th className="text-left font-semibold px-4 py-2.5">Tender / Title</th>
+                  <th className="text-left font-semibold px-4 py-2.5">Tender Title</th>
                   <th className="text-left font-semibold px-4 py-2.5">Source</th>
                   <th className="text-left font-semibold px-4 py-2.5">Value</th>
                   <th className="text-left font-semibold px-4 py-2.5">Due</th>
                   <th className="text-left font-semibold px-4 py-2.5">Score</th>
-                  <th className="text-left font-semibold px-4 py-2.5">AVL Status</th>
                   <th className="text-left font-semibold px-4 py-2.5">Status</th>
                   <th className="text-right font-semibold px-4 py-2.5">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {leads.length === 0 && (
+                {tenders.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="text-center text-gray-400 text-sm py-10">
-                      No leads yet. Click “Add Lead” to register one.
+                    <td colSpan={9} className="text-center text-gray-400 text-sm py-10">
+                      No scraped tenders yet.
                     </td>
                   </tr>
                 )}
-                {leads.map(lead => {
-                  const avl = AVL_STYLES[lead.avlStatus];
-                  const status = STATUS_STYLES[lead.status];
+                {tenders.map(tender => {
+                  const status = STATUS_STYLES[tender.status];
                   return (
-                    <tr key={lead.leadId} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 align-top">
+                    <tr key={tender.tenderName} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 align-top">
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900">{lead.leadId}</p>
-                        <p className="text-xs text-gray-400">{formatCreatedAt(lead.createdAt)}</p>
+                        <p className="font-semibold text-gray-900">{tender.tenderId}</p>
+                        <p className="text-xs text-gray-400">{formatCreatedAt(tender.createdAt)}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900">{lead.client}</p>
-                        {lead.clientType && <p className="text-xs text-gray-400">{lead.clientType}</p>}
+                        <p className="font-medium text-gray-900">{tender.client || '—'}</p>
                       </td>
                       <td className="px-4 py-3 max-w-60">
-                        {lead.tenderRef && (
-                          <p className="text-xs font-mono text-blue-600 truncate">{lead.tenderRef}</p>
+                        <p className="text-gray-800">{tender.title}</p>
+                        {tender.zipUrl && (
+                          <a
+                            href={tender.zipUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            Download docs (.zip)
+                          </a>
                         )}
-                        <p className="text-gray-800">{lead.title}</p>
                       </td>
-                      <td className="px-4 py-3 text-gray-600">{lead.source}</td>
+                      <td className="px-4 py-3 text-gray-600">{tender.source || '—'}</td>
                       <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
-                        {formatValue(lead.value, lead.currency, lead.valueUnit)}
+                        {formatValue(tender.value, tender.currency, tender.valueUnit)}
                       </td>
-                      <td className="px-4 py-3"><DueCell dueDate={lead.dueDate} /></td>
-                      <td className="px-4 py-3"><ScoreRing score={lead.score} /></td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${avl.className}`}>
-                          {avl.label}
-                        </span>
-                      </td>
+                      <td className="px-4 py-3"><DueCell dueDate={tender.dueDate} /></td>
+                      <td className="px-4 py-3"><ScoreRing score={tender.score} /></td>
                       <td className="px-4 py-3">
                         <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${status.className}`}>
                           {status.label}
                         </span>
-                        {lead.status === 'pushed' && lead.pushedInquiryId && (
+                        {tender.status === 'pushed' && tender.pushedInquiryId && (
                           <button
-                            onClick={() => navigate(`/inquiry/${encodeURIComponent(lead.pushedInquiryId!)}`)}
+                            onClick={() => navigate(`/inquiry/${encodeURIComponent(tender.pushedInquiryId!)}`)}
                             className="block mt-1 text-[11px] text-blue-600 hover:underline"
                           >
                             View inquiry →
@@ -207,13 +204,26 @@ export default function LeadEngine() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <LeadActionMenu
-                          lead={lead}
-                          busy={busyId === lead.leadId}
-                          onApprove={() => handleApprove(lead)}
-                          onReject={() => handleReject(lead)}
-                          onPushToSales={() => handlePushToSales(lead)}
-                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleAnalyse(tender)}
+                            disabled={busyId === tender.tenderName}
+                            className={`px-2.5 py-1 text-xs font-semibold rounded-md disabled:opacity-40 ${
+                              tender.analysed
+                                ? 'text-gray-600 border border-gray-200 hover:bg-gray-50'
+                                : 'text-white bg-blue-600 hover:bg-blue-700'
+                            }`}
+                          >
+                            {busyId === tender.tenderName ? '…' : tender.analysed ? 'Re-analyse' : 'Analyse'}
+                          </button>
+                          <LeadActionMenu
+                            tender={tender}
+                            busy={busyId === tender.tenderName}
+                            onApprove={() => handleApprove(tender)}
+                            onReject={() => handleReject(tender)}
+                            onPushToSales={() => handlePushToSales(tender)}
+                          />
+                        </div>
                       </td>
                     </tr>
                   );
@@ -221,15 +231,27 @@ export default function LeadEngine() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
 
-      {showAddModal && (
-        <AddLeadModal
-          existingLeads={leads}
-          onSaved={handleSaved}
-          onClose={() => setShowAddModal(false)}
-        />
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-200 text-sm text-gray-500">
+            <span>{total === 0 ? '0 tenders' : `Page ${page} of ${totalPages} · ${total} tenders`}</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="px-3 py-1 rounded-md border border-gray-200 disabled:opacity-40 hover:bg-gray-50"
+              >
+                Prev
+              </button>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-3 py-1 rounded-md border border-gray-200 disabled:opacity-40 hover:bg-gray-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
