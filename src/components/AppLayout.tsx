@@ -77,7 +77,7 @@ export default function AppLayout() {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-0.5">
-          <NavItem to="/lead-engine" icon={<LeadEngineIcon />} label="Tender Engine" />
+          <NavItem to="/tender-intel" icon={<LeadEngineIcon />} label="Tender Intelligence" />
           <NavItem to="/sales-pipeline" icon={<KanbanIcon />} label="Sales Pipeline" />
         </nav>
 

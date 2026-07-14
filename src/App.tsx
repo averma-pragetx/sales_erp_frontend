@@ -9,9 +9,9 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/sales-pipeline" replace />} />
+          <Route path="/" element={<Navigate to="/tender-intel" replace />} />
           <Route path="/sales-pipeline" element={<SalesPipeline />} />
-          <Route path="/lead-engine" element={<LeadEngine />} />
+          <Route path="/tender-intel" element={<LeadEngine />} />
         </Route>
         <Route path="/inquiry/:id" element={<InquiryDetail />} />
       </Routes>

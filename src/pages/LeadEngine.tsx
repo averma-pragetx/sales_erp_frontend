@@ -125,9 +125,9 @@ export default function LeadEngine() {
     <div className="p-6">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Tender Engine</h1>
+          <h1 className="text-lg font-semibold text-gray-900">Tender Intelligence</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Tenders scraped and screened. Push approved tenders to the Sales Pipeline once ready.
+            Analyse, approve/reject and push them to the Sales Pipeline once ready.
           </p>
         </div>
       </div>
