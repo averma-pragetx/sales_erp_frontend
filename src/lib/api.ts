@@ -98,6 +98,46 @@ export interface ApiPageIndexChatResult {
   pagesUsed: number[];
 }
 
+export interface ApiSearchSource {
+  docId: string;
+  pages: number[];
+  title: string;
+  inquiryId: string;
+}
+
+export interface ApiSearchResult {
+  answer: string;
+  sources: ApiSearchSource[];
+  chatId: string;
+}
+
+export interface ApiSearchChatSummary {
+  chatId: string;
+  title: string;
+  updatedAt: string;
+}
+
+export interface ApiSearchChatMessage {
+  role: 'user' | 'model';
+  text: string;
+  sources: ApiSearchSource[];
+}
+
+export interface ApiSearchChat {
+  chatId: string;
+  title: string;
+  messages: ApiSearchChatMessage[];
+  updatedAt: string;
+}
+
+export interface ApiCorpusDoc {
+  docId: string;
+  title: string;
+  inquiryId: string;
+  pageCount: number;
+  builtAt: string | null;
+}
+
 export interface ApiAnalysis {
   docId: string;
   inquiryId: string;
@@ -142,6 +182,7 @@ export type NewInquiryPayload = Omit<ApiInquiry, '_id' | 'createdAt'>;
 
 export interface ApiScrapedTender {
   tenderName: string;
+  scraperId: string;
   tenderId: string;
   client: string;
   title: string;
@@ -162,6 +203,24 @@ export interface ApiScrapedTender {
 export interface PushToSalesResult {
   tender: ApiScrapedTender;
   inquiry: ApiInquiry;
+}
+
+export interface ApiScraper {
+  scraperId: string;
+  name: string;
+  sourceUrl: string;
+  script: string;
+  target: string;
+  actor: string;
+  cron: string;
+  lastRun: string;
+  nextRun: string;
+  runtime: string;
+  status: 'running' | 'idle' | 'error';
+  errorMsg: string;
+  leads24h: number;
+  qualified24h: number;
+  quotaPct: number;
 }
 
 export interface ApiScrapedTenderPage {
@@ -501,8 +560,10 @@ export const api = {
   },
 
   scrapedTenders: {
-    list: (page = 1, limit = 20) =>
-      request<ApiScrapedTenderPage>(`/api/scraped-tenders?page=${page}&limit=${limit}`),
+    list: (page = 1, limit = 20, scraperId?: string) =>
+      request<ApiScrapedTenderPage>(
+        `/api/scraped-tenders?page=${page}&limit=${limit}${scraperId ? `&scraperId=${encodeURIComponent(scraperId)}` : ''}`
+      ),
     analyse: (tenderName: string) =>
       request<ApiScrapedTender>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/analyse`, { method: 'POST' }),
     approve: (tenderName: string) =>
@@ -511,6 +572,10 @@ export const api = {
       request<ApiScrapedTender>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/reject`, { method: 'PATCH' }),
     pushToSales: (tenderName: string) =>
       request<PushToSalesResult>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/push-to-sales`, { method: 'POST' }),
+  },
+
+  scrapers: {
+    list: () => request<ApiScraper[]>('/api/scrapers'),
   },
 
   documents: {
@@ -659,5 +724,18 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ message, history, provider }),
       }),
+  },
+
+  search: {
+    corpus: () => request<ApiCorpusDoc[]>('/api/search/corpus'),
+    ask: (question: string, history: ApiPageIndexChatTurn[], provider: LlmProvider, docId?: string, chatId?: string) =>
+      request<ApiSearchResult>('/api/search/ask', {
+        method: 'POST',
+        body: JSON.stringify({ question, history, provider, docId: docId || undefined, chatId: chatId || undefined }),
+      }),
+    chats: () => request<ApiSearchChatSummary[]>('/api/search/chats'),
+    chat: (chatId: string) => request<ApiSearchChat>(`/api/search/chats/${chatId}`),
+    deleteChat: (chatId: string) =>
+      request<{ ok: boolean }>(`/api/search/chats/${chatId}`, { method: 'DELETE' }),
   },
 };

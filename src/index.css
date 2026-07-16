@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+@theme {
+  --animate-scroll-bar: scroll-bar 2s linear infinite;
+
+  @keyframes scroll-bar {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+}
+
 * {
   box-sizing: border-box;
 }

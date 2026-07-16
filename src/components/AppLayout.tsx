@@ -59,6 +59,20 @@ const KanbanIcon = () => (
   </svg>
 );
 
+const SearchIcon = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className="shrink-0"
+  >
+    <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
+    <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+  </svg>
+);
+
 export default function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden">
@@ -79,6 +93,7 @@ export default function AppLayout() {
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-0.5">
           <NavItem to="/tender-intel" icon={<LeadEngineIcon />} label="Tender Intelligence" />
           <NavItem to="/sales-pipeline" icon={<KanbanIcon />} label="Sales Pipeline" />
+          <NavItem to="/search" icon={<SearchIcon />} label="Contextual Search" />
         </nav>
 
         {/* Footer */}
