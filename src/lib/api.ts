@@ -728,13 +728,18 @@ export const api = {
 
   search: {
     corpus: () => request<ApiCorpusDoc[]>('/api/search/corpus'),
-    ask: (question: string, history: ApiPageIndexChatTurn[], provider: LlmProvider, docId?: string, chatId?: string) =>
+    ask: (question: string, history: ApiPageIndexChatTurn[], provider: LlmProvider, docIds?: string[], chatId?: string) =>
       request<ApiSearchResult>('/api/search/ask', {
         method: 'POST',
-        body: JSON.stringify({ question, history, provider, docId: docId || undefined, chatId: chatId || undefined }),
+        body: JSON.stringify({ question, history, provider, docIds: docIds?.length ? docIds : undefined, chatId: chatId || undefined }),
       }),
     chats: () => request<ApiSearchChatSummary[]>('/api/search/chats'),
     chat: (chatId: string) => request<ApiSearchChat>(`/api/search/chats/${chatId}`),
+    renameChat: (chatId: string, title: string) =>
+      request<ApiSearchChatSummary>(`/api/search/chats/${chatId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title }),
+      }),
     deleteChat: (chatId: string) =>
       request<{ ok: boolean }>(`/api/search/chats/${chatId}`, { method: 'DELETE' }),
   },

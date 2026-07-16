@@ -46,7 +46,7 @@ export function ScraperCard({ scraper, onClick }: { scraper: ApiScraper; onClick
       <div className="flex gap-2.5 mt-2.5">
         <div className="flex-1 px-2 py-1.5 bg-gray-50 rounded">
           <p className="font-mono text-base font-bold text-gray-900 leading-none">{scraper.leads24h}</p>
-          <p className="text-[10px] uppercase tracking-wide text-gray-500 mt-1">leads · 24h</p>
+          <p className="text-[10px] uppercase tracking-wide text-gray-500 mt-1">tenders</p>
         </div>
         <div className="flex-1 px-2 py-1.5 bg-gray-50 rounded">
           <p className="font-mono text-base font-bold text-gray-900 leading-none">{scraper.qualified24h}</p>

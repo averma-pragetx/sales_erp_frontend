@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { marked } from 'marked';
 import { api } from '../lib/api';
 import type { ApiCorpusDoc, ApiSearchChatSummary, ApiSearchSource, LlmProvider } from '../lib/api';
 
@@ -50,6 +51,21 @@ function parseSegments(text: string): Segment[] {
 }
 
 const fmt = (n: number) => n.toLocaleString('en-IN');
+
+const timeAgo = (iso: string) => {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+};
+
+const SUGGESTIONS = [
+  'Which documents mention SS316L, and where?',
+  'List the equipment items and their quantities. Include a chart.',
+  'What design codes and inspection requirements are specified?',
+  'Summarize the scope of supply across all documents.',
+];
 
 const BAR_COLOR = '#2563eb';
 
@@ -124,6 +140,97 @@ function StatTile({ spec }: { spec: ChartSpec }) {
   );
 }
 
+function PillSelect({ label, value, onChange, children, className }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={['inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white pl-3 pr-2 py-1 hover:border-gray-300 transition-colors', className ?? ''].join(' ')}>
+      <span className="text-[11px] font-medium text-gray-400 whitespace-nowrap">{label}</span>
+      <span className="relative flex items-center min-w-0">
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="appearance-none bg-transparent pr-4 text-xs font-medium text-gray-700 cursor-pointer focus:outline-none truncate max-w-[180px]"
+        >
+          {children}
+        </select>
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="absolute right-0 pointer-events-none text-gray-400">
+          <path d="M1.5 3L4 5.5L6.5 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    </label>
+  );
+}
+
+function ScopePicker({ corpus, selected, onChange }: {
+  corpus: ApiCorpusDoc[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  const toggle = (id: string) =>
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+
+  const label = selected.length === 0 ? `All documents (${corpus.length})` : `${selected.length} of ${corpus.length} selected`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white pl-3 pr-2.5 py-1 hover:border-gray-300 transition-colors"
+      >
+        <span className="text-[11px] font-medium text-gray-400">Scope</span>
+        <span className="text-xs font-medium text-gray-700 truncate max-w-[180px]">{label}</span>
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="text-gray-400 shrink-0">
+          <path d="M1.5 3L4 5.5L6.5 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 mb-1.5 z-10 w-80 rounded-lg border border-gray-200 bg-white shadow-lg py-1 max-h-64 overflow-y-auto">
+          <button
+            onClick={() => onChange([])}
+            className={[
+              'w-full text-left px-3 py-2 text-sm hover:bg-gray-50',
+              selected.length === 0 ? 'text-blue-700 font-medium' : 'text-gray-700',
+            ].join(' ')}
+          >
+            All documents ({corpus.length})
+          </button>
+          <div className="border-t border-gray-100 my-1" />
+          {corpus.map(d => (
+            <label key={d.docId} className="flex items-start gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50">
+              <input
+                type="checkbox"
+                checked={selected.includes(d.docId)}
+                onChange={() => toggle(d.docId)}
+                className="mt-0.5 accent-blue-600"
+              />
+              <span className="min-w-0">
+                <span className="block truncate text-sm text-gray-700">{d.title}</span>
+                <span className="block truncate text-[11px] text-gray-400">{d.inquiryId} · {d.pageCount} pages</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChartBlock({ spec }: { spec: ChartSpec }) {
   if (spec.type === 'bar') return <BarChart spec={spec} />;
   if (spec.type === 'line') return <LineChart spec={spec} />;
@@ -135,12 +242,18 @@ export default function ContextualSearch() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [provider, setProvider] = useState<LlmProvider>('gemini');
-  const [docId, setDocId] = useState('');
+  const [docIds, setDocIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [chats, setChats] = useState<ApiSearchChatSummary[]>([]);
   const [chatId, setChatId] = useState('');
+  const [copiedIdx, setCopiedIdx] = useState(-1);
+  const [editingId, setEditingId] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [railOpen, setRailOpen] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     api.search.corpus().then(setCorpus).catch(() => setCorpus([]));
@@ -166,6 +279,19 @@ export default function ContextualSearch() {
     setError('');
   };
 
+  const saveRename = async (id: string) => {
+    const title = editTitle.trim();
+    setEditingId('');
+    const current = chats.find(c => c.chatId === id);
+    if (!title || !current || title === current.title) return;
+    try {
+      await api.search.renameChat(id, title);
+      setChats(prev => prev.map(c => (c.chatId === id ? { ...c, title } : c)));
+    } catch {
+      setError('Failed to rename chat.');
+    }
+  };
+
   const removeChat = async (id: string) => {
     try {
       await api.search.deleteChat(id);
@@ -176,12 +302,24 @@ export default function ContextualSearch() {
     }
   };
 
+  // Autoscroll only when already near the bottom — never yank the view while
+  // the user is scrolled up reading an earlier answer.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    if (nearBottom || busy) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, busy]);
 
-  const ask = async () => {
-    const question = input.trim();
+  const copyAnswer = (idx: number, text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(-1), 1500);
+    }).catch(() => {});
+  };
+
+  const ask = async (preset?: string) => {
+    const question = (preset ?? input).trim();
     if (!question || busy) return;
     setError('');
     setInput('');
@@ -189,7 +327,7 @@ export default function ContextualSearch() {
     setMessages(prev => [...prev, { role: 'user', text: question }]);
     setBusy(true);
     try {
-      const result = await api.search.ask(question, history, provider, docId, chatId);
+      const result = await api.search.ask(question, history, provider, docIds, chatId);
       setMessages(prev => [...prev, { role: 'model', text: result.answer, sources: result.sources }]);
       setChatId(result.chatId);
       api.search.chats().then(setChats).catch(() => {});
@@ -204,30 +342,93 @@ export default function ContextualSearch() {
 
   return (
     <div className="flex h-full">
-      <aside className="w-60 shrink-0 border-r border-gray-200 bg-white flex flex-col">
-        <div className="p-3 border-b border-gray-100">
+      <aside className={[
+        'shrink-0 border-r border-gray-200 bg-white flex flex-col transition-all duration-200',
+        railOpen ? 'w-60' : 'w-11',
+      ].join(' ')}>
+        <div className={['border-b border-gray-100 flex items-center gap-1.5', railOpen ? 'p-3' : 'p-2 flex-col'].join(' ')}>
+          {railOpen && (
+            <button
+              onClick={newChat}
+              className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              + New chat
+            </button>
+          )}
+          {!railOpen && (
+            <button
+              onClick={newChat}
+              className="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-50"
+              title="New chat"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M6 1.5V10.5M1.5 6H10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
           <button
-            onClick={newChat}
-            className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            onClick={() => setRailOpen(o => !o)}
+            className="rounded-md p-1.5 text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+            title={railOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           >
-            + New chat
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={railOpen ? '' : 'rotate-180'}>
+              <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
         </div>
+        {!railOpen && chats.length > 0 && (
+          <p className="mt-2 text-center text-[10px] text-gray-400" title={`${chats.length} chats`}>{chats.length}</p>
+        )}
+        {railOpen && (
         <div className="flex-1 overflow-y-auto py-1">
-          {chats.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No past chats.</p>}
+          {chats.length > 0 && (
+            <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Recent</p>
+          )}
+          {chats.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No past chats yet.</p>}
           {chats.map(c => (
             <div
               key={c.chatId}
               className={[
-                'group flex items-center gap-1 px-3 py-2 cursor-pointer text-sm',
-                c.chatId === chatId ? 'bg-blue-50 text-blue-800' : 'text-gray-700 hover:bg-gray-50',
+                'group flex items-start gap-1 px-3 py-2 cursor-pointer border-l-2',
+                c.chatId === chatId
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-transparent hover:bg-gray-50',
               ].join(' ')}
               onClick={() => openChat(c.chatId)}
             >
-              <span className="flex-1 truncate" title={c.title}>{c.title}</span>
+              <div className="flex-1 min-w-0">
+                {editingId === c.chatId ? (
+                  <input
+                    autoFocus
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveRename(c.chatId);
+                      if (e.key === 'Escape') setEditingId('');
+                    }}
+                    onBlur={() => saveRename(c.chatId)}
+                    className="w-full rounded border border-blue-300 bg-white px-1.5 py-0.5 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                ) : (
+                  <p className={['truncate text-sm', c.chatId === chatId ? 'text-blue-800 font-medium' : 'text-gray-700'].join(' ')} title={c.title}>
+                    {c.title}
+                  </p>
+                )}
+                <p className="text-[11px] text-gray-400">{timeAgo(c.updatedAt)}</p>
+              </div>
+              <button
+                onClick={e => { e.stopPropagation(); setEditingId(c.chatId); setEditTitle(c.title); }}
+                className="hidden group-hover:block text-gray-400 hover:text-blue-600 px-0.5 pt-0.5"
+                title="Rename chat"
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <path d="M11.3 2.2a1.5 1.5 0 0 1 2.1 2.1l-8 8-2.9.8.8-2.9 8-8Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                </svg>
+              </button>
               <button
                 onClick={e => { e.stopPropagation(); removeChat(c.chatId); }}
-                className="hidden group-hover:block text-gray-400 hover:text-red-600 text-xs px-1"
+                className="hidden group-hover:block text-gray-400 hover:text-red-600 text-xs px-1 pt-0.5"
                 title="Delete chat"
               >
                 ✕
@@ -235,6 +436,7 @@ export default function ContextualSearch() {
             </div>
           ))}
         </div>
+        )}
       </aside>
 
       <div className="flex flex-col h-full flex-1 max-w-4xl mx-auto px-6 py-6">
@@ -253,18 +455,38 @@ export default function ContextualSearch() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto space-y-4 py-2">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 py-2">
         {messages.length === 0 && corpus !== null && corpus.length > 0 && (
-          <div className="text-sm text-gray-400 text-center pt-16">
-            e.g. "Which tenders require SS316L?" or "What is the design pressure in the GAIL inquiry?"
+          <div className="pt-12 px-4 max-w-lg mx-auto text-center">
+            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-xl bg-blue-100">
+              <svg width="36" height="36" viewBox="0 0 16 16" fill="none" className="text-blue-600">
+                <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </div>
+            <h2 className="text-base font-semibold text-gray-800">Ask your documents</h2>
+            <p className="text-xs text-gray-400 mt-1 mb-4">Answers are grounded in indexed document pages, with charts and tables where numbers allow.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {SUGGESTIONS.map(q => (
+                <button
+                  key={q}
+                  onClick={() => ask(q)}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm text-gray-600 hover:border-blue-300 hover:text-blue-700 transition-colors"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {messages.map((m, i) => (
           <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
             <div
               className={[
-                'max-w-[85%] rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap',
-                m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-800',
+                'max-w-[85%] rounded-lg px-4 py-2.5 text-sm',
+                m.role === 'user'
+                  ? 'bg-blue-600 text-white whitespace-pre-wrap rounded-br-sm'
+                  : 'bg-white border border-gray-200 text-gray-800 shadow-sm rounded-bl-sm',
               ].join(' ')}
             >
               {m.role === 'user'
@@ -275,22 +497,34 @@ export default function ContextualSearch() {
                     ) : seg.kind === 'raw' ? (
                       <pre key={j} className="my-1 rounded bg-gray-100 p-2 text-xs text-gray-600 overflow-x-auto">{seg.text}</pre>
                     ) : (
-                      <span key={j}>{seg.text}</span>
+                      <div key={j} className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(seg.text) as string }} />
                     ),
                   )}
-              {m.sources && m.sources.length > 0 && (
-                <div className="mt-2.5 pt-2 border-t border-gray-100 flex flex-wrap gap-1.5">
-                  {m.sources.map(s => (
-                    <Link
-                      key={s.docId}
-                      to={`/inquiry/${encodeURIComponent(s.inquiryId)}`}
-                      className="inline-flex items-center gap-1 rounded-full bg-gray-100 hover:bg-gray-200 px-2.5 py-0.5 text-xs text-gray-600"
-                      title={`Inquiry ${s.inquiryId}`}
-                    >
-                      {s.title}
-                      <span className="text-gray-400">p. {s.pages.join(', ')}</span>
-                    </Link>
-                  ))}
+              {m.role === 'model' && (
+                <div className="mt-2.5 pt-2 border-t border-gray-100 flex flex-wrap items-center gap-1.5">
+                  {m.sources && m.sources.length > 0 && (
+                    <>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">Sources</span>
+                      {m.sources.map(s => (
+                        <Link
+                          key={s.docId}
+                          to={`/inquiry/${encodeURIComponent(s.inquiryId)}`}
+                          className="inline-flex items-center gap-1 rounded-full bg-gray-100 hover:bg-gray-200 px-2.5 py-0.5 text-xs text-gray-600"
+                          title={`Inquiry ${s.inquiryId}`}
+                        >
+                          {s.title}
+                          <span className="text-gray-400">p. {s.pages.join(', ')}</span>
+                        </Link>
+                      ))}
+                    </>
+                  )}
+                  <button
+                    onClick={() => copyAnswer(i, m.text)}
+                    className="ml-auto text-[11px] text-gray-400 hover:text-gray-600"
+                    title="Copy answer"
+                  >
+                    {copiedIdx === i ? 'Copied ✓' : 'Copy'}
+                  </button>
                 </div>
               )}
             </div>
@@ -298,8 +532,13 @@ export default function ContextualSearch() {
         ))}
         {busy && (
           <div className="flex justify-start">
-            <div className="rounded-lg bg-white border border-gray-200 px-4 py-2.5 text-sm text-gray-400 animate-pulse">
-              Searching documents…
+            <div className="flex items-center gap-2 rounded-lg bg-white border border-gray-200 px-4 py-3 shadow-sm">
+              <span className="flex gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce" />
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:300ms]" />
+              </span>
+              <span className="text-xs text-gray-400">Searching documents…</span>
             </div>
           </div>
         )}
@@ -308,37 +547,68 @@ export default function ContextualSearch() {
 
       {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
 
-      <div className="flex gap-2 pt-3 border-t border-gray-200">
-        <select
-          value={provider}
-          onChange={e => setProvider(e.target.value as LlmProvider)}
-          className="rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-600"
-        >
+      <div className="flex items-center gap-2 pt-3 border-t border-gray-200">
+        <ScopePicker corpus={corpus ?? []} selected={docIds} onChange={setDocIds} />
+        <PillSelect label="Model" value={provider} onChange={v => setProvider(v as LlmProvider)}>
           <option value="gemini">Gemini</option>
           <option value="openai">OpenAI</option>
-        </select>
-        <select
-          value={docId}
-          onChange={e => setDocId(e.target.value)}
-          className="rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-600 max-w-[220px]"
-        >
-          <option value="">All documents ({corpus?.length ?? 0})</option>
-          {(corpus ?? []).map(d => (
-            <option key={d.docId} value={d.docId}>
-              {d.title} — {d.inquiryId}
-            </option>
-          ))}
-        </select>
-        <input
+        </PillSelect>
+        {docIds.length > 0 && (
+          <>
+            <div className="flex flex-wrap items-center gap-1 min-w-0">
+              {docIds.map(id => {
+                const d = corpus?.find(c => c.docId === id);
+                return (
+                  <span key={id} className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 pl-2 pr-1 py-0.5 text-[11px] max-w-[140px]">
+                    <span className="truncate" title={d?.title}>{d?.title ?? id}</span>
+                    <button
+                      onClick={() => setDocIds(prev => prev.filter(x => x !== id))}
+                      className="text-blue-400 hover:text-blue-700 leading-none"
+                      title="Remove from scope"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => setDocIds([])}
+              className="text-[11px] text-blue-600 hover:underline shrink-0"
+              title="Search all documents again"
+            >
+              clear
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <textarea
+          ref={inputRef}
           value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') ask(); }}
-          placeholder="Ask across all indexed documents…"
+          rows={1}
+          onChange={e => {
+            setInput(e.target.value);
+            const el = e.target;
+            el.style.height = 'auto';
+            el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              ask();
+              if (inputRef.current) inputRef.current.style.height = 'auto';
+            }
+          }}
+          placeholder={docIds.length > 0
+            ? `Ask across ${docIds.length} selected document${docIds.length === 1 ? '' : 's'}…`
+            : 'Ask across all indexed documents… (Shift+Enter for a new line)'}
           disabled={corpus !== null && corpus.length === 0}
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+          className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
         />
         <button
-          onClick={ask}
+          onClick={() => ask()}
           disabled={busy || !input.trim()}
           className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
