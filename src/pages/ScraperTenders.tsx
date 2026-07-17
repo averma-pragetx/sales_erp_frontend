@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { ApiScraper, ApiScrapedTender } from '../lib/api';
+import type { ApiScraper } from '../lib/api';
 import { api } from '../lib/api';
 import TenderTable from '../components/TenderTable';
 
@@ -11,7 +11,6 @@ export default function ScraperTenders() {
   const navigate = useNavigate();
   const { scraperId = '' } = useParams();
   const [scraper, setScraper] = useState<ApiScraper | null>(null);
-  const [tenders, setTenders] = useState<ApiScrapedTender[]>([]);
   const [loadingTenders, setLoadingTenders] = useState(true);
   const [syncKey, setSyncKey] = useState(0);
   const [step, setStep] = useState(0);
@@ -26,7 +25,6 @@ export default function ScraperTenders() {
   useEffect(() => {
     setLoadingTenders(true);
     api.scrapedTenders.list(1, limit, scraperId)
-      .then(({ items }) => setTenders(items))
       .catch(() => {})
       .finally(() => setLoadingTenders(false));
   }, [scraperId, limit, syncKey]);

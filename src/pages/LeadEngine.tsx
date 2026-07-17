@@ -106,13 +106,9 @@ function ScheduleDialog({ scraper, onClose }: { scraper: ApiScraper; onClose: ()
             </select>
           </div> */}
 
-          {/* {msg ? (
+          {msg && (
             <p className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-md px-3 py-2.5">✓ {msg}</p>
-          ) : (
-            <p className="bg-amber-50 border border-amber-200 text-amber-700 text-xs rounded-md px-3 py-2.5">
-              ⓘ Changes take effect from the next sync cycle. Currently in-flight scrape will complete first.
-            </p>
-          )} */}
+          )}
         </div>
 
         <div className="flex justify-end gap-2 px-6 py-3.5 border-t border-gray-200 bg-gray-50">
