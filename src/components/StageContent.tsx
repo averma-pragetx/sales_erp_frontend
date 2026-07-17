@@ -129,6 +129,7 @@ function MetadataGrid({ inquiry, apiData }: { inquiry: Inquiry; apiData: ApiInqu
     { label: 'RECEIVED', value: apiData.receivedDate },
     { label: 'BID DUE', value: apiData.bidDue },
     { label: 'SOURCE', value: apiData.source },
+    ...(apiData.tenderId ? [{ label: 'TENDER ID', value: apiData.tenderId }] : []),
   ];
   return (
     <div className="grid grid-cols-3 gap-x-8 gap-y-5 mt-5">

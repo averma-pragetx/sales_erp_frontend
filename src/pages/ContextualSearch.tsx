@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { marked } from 'marked';
 import { api } from '../lib/api';
-import type { ApiCorpusDoc, ApiSearchChatSummary, ApiSearchSource, LlmProvider } from '../lib/api';
+import type { ApiCorpusDoc, ApiScraper, ApiScrapedTender, ApiSearchChatSummary, ApiSearchSource, LlmProvider } from '../lib/api';
 
 interface Message {
   role: 'user' | 'model';
@@ -166,12 +166,15 @@ function PillSelect({ label, value, onChange, children, className }: {
   );
 }
 
-function ScopePicker({ corpus, selected, onChange }: {
-  corpus: ApiCorpusDoc[];
-  selected: string[];
-  onChange: (ids: string[]) => void;
+function ScraperScopePicker({ scrapers, tenders, scraperId, tenderName, onSelect }: {
+  scrapers: ApiScraper[];
+  tenders: ApiScrapedTender[];
+  scraperId: string;
+  tenderName: string;
+  onSelect: (scraperId: string, tenderName: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [viewScraper, setViewScraper] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -182,49 +185,87 @@ function ScopePicker({ corpus, selected, onChange }: {
     return () => document.removeEventListener('mousedown', close);
   }, []);
 
-  const toggle = (id: string) =>
-    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
-
-  const label = selected.length === 0 ? `All documents (${corpus.length})` : `${selected.length} of ${corpus.length} selected`;
+  const selectedTender = tenders.find(t => t.tenderName === tenderName);
+  const label = selectedTender?.title
+    ?? (scraperId ? scrapers.find(s => s.scraperId === scraperId)?.name ?? scraperId : 'Select scraper');
+  const viewTenders = tenders.filter(t => t.scraperId === viewScraper);
 
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => { setViewScraper(scraperId); setOpen(o => !o); }}
         className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white pl-3 pr-2.5 py-1 hover:border-gray-300 transition-colors"
       >
-        <span className="text-[11px] font-medium text-gray-400">Scope</span>
-        <span className="text-xs font-medium text-gray-700 truncate max-w-[180px]">{label}</span>
+        <span className="text-[11px] font-medium text-gray-400">Scope:</span>
+        <span className="text-xs font-medium text-gray-700 truncate max-w-[220px]">{label}</span>
         <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="text-gray-400 shrink-0">
           <path d="M1.5 3L4 5.5L6.5 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {open && (
         <div className="absolute bottom-full left-0 mb-1.5 z-10 w-80 rounded-lg border border-gray-200 bg-white shadow-lg py-1 max-h-64 overflow-y-auto">
-          <button
-            onClick={() => onChange([])}
-            className={[
-              'w-full text-left px-3 py-2 text-sm hover:bg-gray-50',
-              selected.length === 0 ? 'text-blue-700 font-medium' : 'text-gray-700',
-            ].join(' ')}
-          >
-            All documents ({corpus.length})
-          </button>
-          <div className="border-t border-gray-100 my-1" />
-          {corpus.map(d => (
-            <label key={d.docId} className="flex items-start gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50">
-              <input
-                type="checkbox"
-                checked={selected.includes(d.docId)}
-                onChange={() => toggle(d.docId)}
-                className="mt-0.5 accent-blue-600"
-              />
-              <span className="min-w-0">
-                <span className="block truncate text-sm text-gray-700">{d.title}</span>
-                <span className="block truncate text-[11px] text-gray-400">{d.inquiryId} · {d.pageCount} pages</span>
-              </span>
-            </label>
-          ))}
+          {!viewScraper ? (
+            <>
+              {/* <button
+                onClick={() => { onSelect('', ''); setOpen(false); }}
+                className={[
+                  'w-full text-left px-3 py-2 text-sm hover:bg-gray-50',
+                  !scraperId && !tenderName ? 'text-blue-700 font-medium' : 'text-gray-700',
+                ].join(' ')}
+              >
+                Select a Scraper
+              </button> */}
+              {/* <div className="border-none my-1" /> */}
+              <p className="px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Scrapers</p>
+              <div className="border-t border-gray-100 my-1" />
+              {scrapers.map(s => (
+                <button
+                  key={s.scraperId}
+                  onClick={() => setViewScraper(s.scraperId)}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-gray-50"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm text-gray-700">{s.name}</span>
+                    <span className="block font-mono text-[11px] text-gray-400">{s.scraperId}</span>
+                  </span>
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="text-gray-400 shrink-0">
+                    <path d="M3 1.5L5.5 4L3 6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ))}
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setViewScraper('')}
+                className="w-full flex items-center gap-1.5 px-3 py-2 text-left text-xs font-medium text-gray-500 hover:bg-gray-50"
+              >
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="shrink-0">
+                  <path d="M5 1.5L2.5 4L5 6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {scrapers.find(s => s.scraperId === viewScraper)?.name ?? viewScraper} · tenders
+              </button>
+              <div className="border-t border-gray-100 my-1" />
+              {viewTenders.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No tenders for this scraper yet.</p>}
+              {viewTenders.map(t => (
+                <button
+                  key={t.tenderName}
+                  onClick={() => { onSelect(viewScraper, t.tenderName); setOpen(false); }}
+                  className={[
+                    'w-full text-left px-3 py-2 hover:bg-gray-50',
+                    t.tenderName === tenderName ? 'bg-blue-50' : '',
+                  ].join(' ')}
+                >
+                  <span className={['block truncate text-sm', t.tenderName === tenderName ? 'text-blue-800 font-medium' : 'text-gray-700'].join(' ')}>
+                    {t.title}
+                  </span>
+                  <span className="block truncate text-[11px] text-gray-400">
+                    {t.client || t.tenderId}{t.status === 'pushed' ? ` · ${t.pushedInquiryId}` : ' · not pushed'}
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -242,7 +283,10 @@ export default function ContextualSearch() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [provider, setProvider] = useState<LlmProvider>('gemini');
-  const [docIds, setDocIds] = useState<string[]>([]);
+  const [scrapers, setScrapers] = useState<ApiScraper[]>([]);
+  const [tenders, setTenders] = useState<ApiScrapedTender[]>([]);
+  const [scraperId, setScraperId] = useState('');
+  const [tenderName, setTenderName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [chats, setChats] = useState<ApiSearchChatSummary[]>([]);
@@ -257,8 +301,17 @@ export default function ContextualSearch() {
 
   useEffect(() => {
     api.search.corpus().then(setCorpus).catch(() => setCorpus([]));
-    api.search.chats().then(setChats).catch(() => {});
+    api.search.chats().then(setChats).catch(() => { });
+    api.scrapers.list().then(setScrapers).catch(() => { });
+    api.scrapedTenders.list(1, 100).then(res => setTenders(res.items)).catch(() => { });
   }, []);
+
+  const selectedTender = tenders.find(t => t.tenderName === tenderName);
+  const docIds = useMemo(() => {
+    if (!selectedTender?.pushedInquiryId || !corpus) return [];
+    return corpus.filter(c => c.inquiryId === selectedTender.pushedInquiryId).map(c => c.docId);
+  }, [selectedTender, corpus]);
+  const tenderHasNoDocs = !!tenderName && docIds.length === 0;
 
   const openChat = async (id: string) => {
     if (busy) return;
@@ -315,7 +368,7 @@ export default function ContextualSearch() {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedIdx(idx);
       setTimeout(() => setCopiedIdx(-1), 1500);
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   const ask = async (preset?: string) => {
@@ -330,7 +383,7 @@ export default function ContextualSearch() {
       const result = await api.search.ask(question, history, provider, docIds, chatId);
       setMessages(prev => [...prev, { role: 'model', text: result.answer, sources: result.sources }]);
       setChatId(result.chatId);
-      api.search.chats().then(setChats).catch(() => {});
+      api.search.chats().then(setChats).catch(() => { });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed.');
       setMessages(prev => prev.slice(0, -1));
@@ -380,118 +433,118 @@ export default function ContextualSearch() {
           <p className="mt-2 text-center text-[10px] text-gray-400" title={`${chats.length} chats`}>{chats.length}</p>
         )}
         {railOpen && (
-        <div className="flex-1 overflow-y-auto py-1">
-          {chats.length > 0 && (
-            <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Recent</p>
-          )}
-          {chats.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No past chats yet.</p>}
-          {chats.map(c => (
-            <div
-              key={c.chatId}
-              className={[
-                'group flex items-start gap-1 px-3 py-2 cursor-pointer border-l-2',
-                c.chatId === chatId
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-transparent hover:bg-gray-50',
-              ].join(' ')}
-              onClick={() => openChat(c.chatId)}
-            >
-              <div className="flex-1 min-w-0">
-                {editingId === c.chatId ? (
-                  <input
-                    autoFocus
-                    value={editTitle}
-                    onChange={e => setEditTitle(e.target.value)}
-                    onClick={e => e.stopPropagation()}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') saveRename(c.chatId);
-                      if (e.key === 'Escape') setEditingId('');
-                    }}
-                    onBlur={() => saveRename(c.chatId)}
-                    className="w-full rounded border border-blue-300 bg-white px-1.5 py-0.5 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  />
-                ) : (
-                  <p className={['truncate text-sm', c.chatId === chatId ? 'text-blue-800 font-medium' : 'text-gray-700'].join(' ')} title={c.title}>
-                    {c.title}
-                  </p>
-                )}
-                <p className="text-[11px] text-gray-400">{timeAgo(c.updatedAt)}</p>
+          <div className="flex-1 overflow-y-auto py-1">
+            {chats.length > 0 && (
+              <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Recent</p>
+            )}
+            {chats.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No past chats yet.</p>}
+            {chats.map(c => (
+              <div
+                key={c.chatId}
+                className={[
+                  'group flex items-start gap-1 px-3 py-2 cursor-pointer border-l-2',
+                  c.chatId === chatId
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-transparent hover:bg-gray-50',
+                ].join(' ')}
+                onClick={() => openChat(c.chatId)}
+              >
+                <div className="flex-1 min-w-0">
+                  {editingId === c.chatId ? (
+                    <input
+                      autoFocus
+                      value={editTitle}
+                      onChange={e => setEditTitle(e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') saveRename(c.chatId);
+                        if (e.key === 'Escape') setEditingId('');
+                      }}
+                      onBlur={() => saveRename(c.chatId)}
+                      className="w-full rounded border border-blue-300 bg-white px-1.5 py-0.5 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    />
+                  ) : (
+                    <p className={['truncate text-sm', c.chatId === chatId ? 'text-blue-800 font-medium' : 'text-gray-700'].join(' ')} title={c.title}>
+                      {c.title}
+                    </p>
+                  )}
+                  <p className="text-[11px] text-gray-400">{timeAgo(c.updatedAt)}</p>
+                </div>
+                <button
+                  onClick={e => { e.stopPropagation(); setEditingId(c.chatId); setEditTitle(c.title); }}
+                  className="hidden group-hover:block text-gray-400 hover:text-blue-600 px-0.5 pt-0.5"
+                  title="Rename chat"
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                    <path d="M11.3 2.2a1.5 1.5 0 0 1 2.1 2.1l-8 8-2.9.8.8-2.9 8-8Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); removeChat(c.chatId); }}
+                  className="hidden group-hover:block text-gray-400 hover:text-red-600 text-xs px-1 pt-0.5"
+                  title="Delete chat"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                onClick={e => { e.stopPropagation(); setEditingId(c.chatId); setEditTitle(c.title); }}
-                className="hidden group-hover:block text-gray-400 hover:text-blue-600 px-0.5 pt-0.5"
-                title="Rename chat"
-              >
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                  <path d="M11.3 2.2a1.5 1.5 0 0 1 2.1 2.1l-8 8-2.9.8.8-2.9 8-8Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-                </svg>
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); removeChat(c.chatId); }}
-                className="hidden group-hover:block text-gray-400 hover:text-red-600 text-xs px-1 pt-0.5"
-                title="Delete chat"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
         )}
       </aside>
 
       <div className="flex flex-col h-full flex-1 max-w-4xl mx-auto px-6 py-6">
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Contextual Search</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {corpus === null
-            ? 'Loading corpus…'
-            : `Ask questions across ${corpus.length} indexed document${corpus.length === 1 ? '' : 's'}. Answers cite document and page.`}
-        </p>
-      </div>
-
-      {corpus !== null && corpus.length === 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          No documents indexed yet. Open an inquiry document and build its page index to make it searchable.
+        <div className="mb-4">
+          <h1 className="text-xl font-bold text-gray-900">Contextual Search</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {corpus === null
+              ? 'Loading corpus…'
+              : `Ask questions across ${corpus.length} indexed document${corpus.length === 1 ? '' : 's'}. Answers cite document and page.`}
+          </p>
         </div>
-      )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 py-2">
-        {messages.length === 0 && corpus !== null && corpus.length > 0 && (
-          <div className="pt-12 px-4 max-w-lg mx-auto text-center">
-            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-xl bg-blue-100">
-              <svg width="36" height="36" viewBox="0 0 16 16" fill="none" className="text-blue-600">
-                <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </div>
-            <h2 className="text-base font-semibold text-gray-800">Ask your documents</h2>
-            <p className="text-xs text-gray-400 mt-1 mb-4">Answers are grounded in indexed document pages, with charts and tables where numbers allow.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {SUGGESTIONS.map(q => (
-                <button
-                  key={q}
-                  onClick={() => ask(q)}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm text-gray-600 hover:border-blue-300 hover:text-blue-700 transition-colors"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
+        {corpus !== null && corpus.length === 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            No documents indexed yet. Open an inquiry document and build its page index to make it searchable.
           </div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
-            <div
-              className={[
-                'max-w-[85%] rounded-lg px-4 py-2.5 text-sm',
-                m.role === 'user'
-                  ? 'bg-blue-600 text-white whitespace-pre-wrap rounded-br-sm'
-                  : 'bg-white border border-gray-200 text-gray-800 shadow-sm rounded-bl-sm',
-              ].join(' ')}
-            >
-              {m.role === 'user'
-                ? m.text
-                : parseSegments(m.text).map((seg, j) =>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 py-2">
+          {messages.length === 0 && corpus !== null && corpus.length > 0 && (
+            <div className="pt-12 px-4 max-w-lg mx-auto text-center">
+              <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-xl bg-blue-100">
+                <svg width="36" height="36" viewBox="0 0 16 16" fill="none" className="text-blue-600">
+                  <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </div>
+              <h2 className="text-base font-semibold text-gray-800">Ask your documents</h2>
+              <p className="text-xs text-gray-400 mt-1 mb-4">Answers are grounded in indexed document pages, with charts and tables where numbers allow.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SUGGESTIONS.map(q => (
+                  <button
+                    key={q}
+                    onClick={() => ask(q)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm text-gray-600 hover:border-blue-300 hover:text-blue-700 transition-colors"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {messages.map((m, i) => (
+            <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+              <div
+                className={[
+                  'max-w-[85%] rounded-lg px-4 py-2.5 text-sm',
+                  m.role === 'user'
+                    ? 'bg-blue-600 text-white whitespace-pre-wrap rounded-br-sm'
+                    : 'bg-white border border-gray-200 text-gray-800 shadow-sm rounded-bl-sm',
+                ].join(' ')}
+              >
+                {m.role === 'user'
+                  ? m.text
+                  : parseSegments(m.text).map((seg, j) =>
                     seg.kind === 'chart' ? (
                       <ChartBlock key={j} spec={seg.spec} />
                     ) : seg.kind === 'raw' ? (
@@ -500,121 +553,116 @@ export default function ContextualSearch() {
                       <div key={j} className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(seg.text) as string }} />
                     ),
                   )}
-              {m.role === 'model' && (
-                <div className="mt-2.5 pt-2 border-t border-gray-100 flex flex-wrap items-center gap-1.5">
-                  {m.sources && m.sources.length > 0 && (
-                    <>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">Sources</span>
-                      {m.sources.map(s => (
-                        <Link
-                          key={s.docId}
-                          to={`/inquiry/${encodeURIComponent(s.inquiryId)}`}
-                          className="inline-flex items-center gap-1 rounded-full bg-gray-100 hover:bg-gray-200 px-2.5 py-0.5 text-xs text-gray-600"
-                          title={`Inquiry ${s.inquiryId}`}
-                        >
-                          {s.title}
-                          <span className="text-gray-400">p. {s.pages.join(', ')}</span>
-                        </Link>
-                      ))}
-                    </>
-                  )}
-                  <button
-                    onClick={() => copyAnswer(i, m.text)}
-                    className="ml-auto text-[11px] text-gray-400 hover:text-gray-600"
-                    title="Copy answer"
-                  >
-                    {copiedIdx === i ? 'Copied ✓' : 'Copy'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-        {busy && (
-          <div className="flex justify-start">
-            <div className="flex items-center gap-2 rounded-lg bg-white border border-gray-200 px-4 py-3 shadow-sm">
-              <span className="flex gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce" />
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:150ms]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:300ms]" />
-              </span>
-              <span className="text-xs text-gray-400">Searching documents…</span>
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
-
-      <div className="flex items-center gap-2 pt-3 border-t border-gray-200">
-        <ScopePicker corpus={corpus ?? []} selected={docIds} onChange={setDocIds} />
-        <PillSelect label="Model" value={provider} onChange={v => setProvider(v as LlmProvider)}>
-          <option value="gemini">Gemini</option>
-          <option value="openai">OpenAI</option>
-        </PillSelect>
-        {docIds.length > 0 && (
-          <>
-            <div className="flex flex-wrap items-center gap-1 min-w-0">
-              {docIds.map(id => {
-                const d = corpus?.find(c => c.docId === id);
-                return (
-                  <span key={id} className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 pl-2 pr-1 py-0.5 text-[11px] max-w-[140px]">
-                    <span className="truncate" title={d?.title}>{d?.title ?? id}</span>
+                {m.role === 'model' && (
+                  <div className="mt-2.5 pt-2 border-t border-gray-100 flex flex-wrap items-center gap-1.5">
+                    {m.sources && m.sources.length > 0 && (
+                      <>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">Sources</span>
+                        {m.sources.map(s => (
+                          <Link
+                            key={s.docId}
+                            to={`/inquiry/${encodeURIComponent(s.inquiryId)}`}
+                            className="inline-flex items-center gap-1 rounded-full bg-gray-100 hover:bg-gray-200 px-2.5 py-0.5 text-xs text-gray-600"
+                            title={`Inquiry ${s.inquiryId}`}
+                          >
+                            {s.title}
+                            <span className="text-gray-400">p. {s.pages.join(', ')}</span>
+                          </Link>
+                        ))}
+                      </>
+                    )}
                     <button
-                      onClick={() => setDocIds(prev => prev.filter(x => x !== id))}
-                      className="text-blue-400 hover:text-blue-700 leading-none"
-                      title="Remove from scope"
+                      onClick={() => copyAnswer(i, m.text)}
+                      className="ml-auto text-[11px] text-gray-400 hover:text-gray-600"
+                      title="Copy answer"
                     >
-                      ✕
+                      {copiedIdx === i ? 'Copied ✓' : 'Copy'}
                     </button>
-                  </span>
-                );
-              })}
+                  </div>
+                )}
+              </div>
             </div>
+          ))}
+          {busy && (
+            <div className="flex justify-start">
+              <div className="flex items-center gap-2 rounded-lg bg-white border border-gray-200 px-4 py-3 shadow-sm">
+                <span className="flex gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:150ms]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:300ms]" />
+                </span>
+                <span className="text-xs text-gray-400">Searching documents…</span>
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+
+        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-200">
+          <ScraperScopePicker
+            scrapers={scrapers}
+            tenders={tenders}
+            scraperId={scraperId}
+            tenderName={tenderName}
+            onSelect={(s, t) => { setScraperId(s); setTenderName(t); }}
+          />
+          <PillSelect label="Model" value={provider} onChange={v => setProvider(v as LlmProvider)}>
+            <option value="gemini">Gemini</option>
+            <option value="openai">OpenAI</option>
+          </PillSelect>
+          {tenderName && (
             <button
-              onClick={() => setDocIds([])}
+              onClick={() => { setScraperId(''); setTenderName(''); }}
               className="text-[11px] text-blue-600 hover:underline shrink-0"
               title="Search all documents again"
             >
               clear
             </button>
-          </>
-        )}
-      </div>
+          )}
+          {tenderHasNoDocs && (
+            <span className="text-[11px] text-amber-600">
+              No indexed documents for this tender yet — push it to sales and build its page indexes first.
+            </span>
+          )}
+        </div>
 
-      <div className="flex gap-2 pt-2">
-        <textarea
-          ref={inputRef}
-          value={input}
-          rows={1}
-          onChange={e => {
-            setInput(e.target.value);
-            const el = e.target;
-            el.style.height = 'auto';
-            el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              ask();
-              if (inputRef.current) inputRef.current.style.height = 'auto';
-            }
-          }}
-          placeholder={docIds.length > 0
-            ? `Ask across ${docIds.length} selected document${docIds.length === 1 ? '' : 's'}…`
-            : 'Ask across all indexed documents… (Shift+Enter for a new line)'}
-          disabled={corpus !== null && corpus.length === 0}
-          className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-        />
-        <button
-          onClick={() => ask()}
-          disabled={busy || !input.trim()}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          Ask
-        </button>
-      </div>
+        <div className="flex gap-2 pt-2">
+          <textarea
+            ref={inputRef}
+            value={input}
+            rows={1}
+            onChange={e => {
+              setInput(e.target.value);
+              const el = e.target;
+              el.style.height = 'auto';
+              el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                ask();
+                if (inputRef.current) inputRef.current.style.height = 'auto';
+              }
+            }}
+            placeholder={tenderName
+              ? `Ask about "${selectedTender?.title ?? tenderName}"…`
+              : 'Ask across all indexed documents…'}
+            disabled={(corpus !== null && corpus.length === 0) || tenderHasNoDocs}
+            className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+          />
+          <button
+            onClick={() => ask()}
+            disabled={busy || !input.trim() || tenderHasNoDocs}
+            className="flex items-center justify-center w-9 h-9 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors shrink-0"
+            title="Ask"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );

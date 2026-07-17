@@ -17,6 +17,7 @@ export interface ApiInquiry {
   bidDue: string;
   receivedDate: string;
   source: string;
+  tenderId?: string;
   estimator: string;
   completedUpTo: number;
   createdAt: string;
@@ -193,11 +194,29 @@ export interface ApiScrapedTender {
   dueDate: string;
   score: number | null;
   analysed: boolean;
-  zipUrl: string | null;
+  hasZip: boolean;
   status: 'new' | 'approved' | 'rejected' | 'pushed';
   pushedInquiryId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ApiDocMeta {
+  docType: string;
+  pages: number;
+  tenderNo: string;
+  client: string;
+  package: string;
+  dueDate: string;
+  estValue: string;
+  sections: string[];
+}
+
+export interface ApiTenderFile {
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  meta: ApiDocMeta | null;
 }
 
 export interface PushToSalesResult {
@@ -564,6 +583,17 @@ export const api = {
       request<ApiScrapedTenderPage>(
         `/api/scraped-tenders?page=${page}&limit=${limit}${scraperId ? `&scraperId=${encodeURIComponent(scraperId)}` : ''}`
       ),
+    fileUrl: (tenderName: string, fileName: string) =>
+      `${API_BASE}/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/download?file=${encodeURIComponent(fileName)}`,
+    zipUrl: (tenderName: string) =>
+      `${API_BASE}/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/download?zip=1`,
+    files: (tenderName: string) =>
+      request<{ files: ApiTenderFile[] }>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/files`),
+    analyseFile: (tenderName: string, fileName: string) =>
+      request<{ meta: ApiDocMeta }>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/analyse`, {
+        method: 'POST',
+        body: JSON.stringify({ fileName }),
+      }),
     analyse: (tenderName: string) =>
       request<ApiScrapedTender>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/analyse`, { method: 'POST' }),
     approve: (tenderName: string) =>
