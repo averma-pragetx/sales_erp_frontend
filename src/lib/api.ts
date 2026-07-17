@@ -517,7 +517,7 @@ export interface ApiStage8 {
 
 // In production the frontend calls Render directly (avoids Netlify proxy
 // mangling multipart boundaries). Set VITE_API_URL in Netlify env vars.
-// In development it's empty and Vite's proxy handles /api/* → localhost:3001.
+// In development it's empty and Vite's proxy handles /api/* → localhost:3000.
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
