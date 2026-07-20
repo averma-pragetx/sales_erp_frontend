@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { marked } from 'marked';
+import jsPDF from 'jspdf';
 import { api } from '../lib/api';
 import type { ApiCorpusDoc, ApiScraper, ApiScrapedTender, ApiSearchChatSummary, ApiSearchSource, LlmProvider } from '../lib/api';
 
@@ -49,6 +50,63 @@ function parseSegments(text: string): Segment[] {
   }
   return segments;
 }
+
+interface TableBlock { header: string[]; rows: string[][]; raw: string }
+type TextPart = { kind: 'text'; text: string } | { kind: 'table'; table: TableBlock };
+
+const isTableRow = (l: string) => /^\s*\|.*\|\s*$/.test(l);
+const isTableSep = (l: string) => /^\s*\|?[\s:-]+\|[\s:|-]*$/.test(l) && l.includes('-');
+const tableCells = (line: string) => line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+
+// ponytail: hand-rolled markdown-table splitter (a few regex lines) instead of a
+// markdown-table parser dependency — only need header+rows+raw, not a full AST.
+function splitTables(text: string): TextPart[] {
+  const lines = text.split('\n');
+  const out: TextPart[] = [];
+  let buf: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (isTableRow(lines[i]) && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+      if (buf.length) { out.push({ kind: 'text', text: buf.join('\n') }); buf = []; }
+      const header = tableCells(lines[i]);
+      const raw = [lines[i], lines[i + 1]];
+      const rows: string[][] = [];
+      let j = i + 2;
+      while (j < lines.length && isTableRow(lines[j])) {
+        raw.push(lines[j]);
+        rows.push(tableCells(lines[j]));
+        j++;
+      }
+      out.push({ kind: 'table', table: { header, rows, raw: raw.join('\n') } });
+      i = j;
+    } else {
+      buf.push(lines[i]);
+      i++;
+    }
+  }
+  if (buf.length) out.push({ kind: 'text', text: buf.join('\n') });
+  return out;
+}
+
+function downloadBlob(content: string, mimeType: string, fileName: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(s: string): string {
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function tableToCsv(table: TableBlock): string {
+  return [table.header, ...table.rows].map(r => r.map(csvCell).join(',')).join('\n');
+}
+
+const safeFileName = (s: string) => s.replace(/[^\w -]/g, '_').slice(0, 60) || 'chat';
 
 const fmt = (n: number) => n.toLocaleString('en-IN');
 
@@ -166,12 +224,11 @@ function PillSelect({ label, value, onChange, children, className }: {
   );
 }
 
-function ScraperScopePicker({ scrapers, tenders, scraperId, tenderName, onSelect }: {
+function ScraperScopePicker({ scrapers, tenders, selected, onToggle }: {
   scrapers: ApiScraper[];
   tenders: ApiScrapedTender[];
-  scraperId: string;
-  tenderName: string;
-  onSelect: (scraperId: string, tenderName: string) => void;
+  selected: string[];
+  onToggle: (tenderName: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [viewScraper, setViewScraper] = useState('');
@@ -185,15 +242,17 @@ function ScraperScopePicker({ scrapers, tenders, scraperId, tenderName, onSelect
     return () => document.removeEventListener('mousedown', close);
   }, []);
 
-  const selectedTender = tenders.find(t => t.tenderName === tenderName);
-  const label = selectedTender?.title
-    ?? (scraperId ? scrapers.find(s => s.scraperId === scraperId)?.name ?? scraperId : 'Select scraper');
+  const label = selected.length === 0
+    ? 'All documents'
+    : selected.length === 1
+      ? tenders.find(t => t.tenderName === selected[0])?.title ?? selected[0]
+      : `${selected.length} tenders`;
   const viewTenders = tenders.filter(t => t.scraperId === viewScraper);
 
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => { setViewScraper(scraperId); setOpen(o => !o); }}
+        onClick={() => { setOpen(o => !o); }}
         className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white pl-3 pr-2.5 py-1 hover:border-gray-300 transition-colors"
       >
         <span className="text-[11px] font-medium text-gray-400">Scope:</span>
@@ -206,16 +265,6 @@ function ScraperScopePicker({ scrapers, tenders, scraperId, tenderName, onSelect
         <div className="absolute bottom-full left-0 mb-1.5 z-10 w-80 rounded-lg border border-gray-200 bg-white shadow-lg py-1 max-h-64 overflow-y-auto">
           {!viewScraper ? (
             <>
-              {/* <button
-                onClick={() => { onSelect('', ''); setOpen(false); }}
-                className={[
-                  'w-full text-left px-3 py-2 text-sm hover:bg-gray-50',
-                  !scraperId && !tenderName ? 'text-blue-700 font-medium' : 'text-gray-700',
-                ].join(' ')}
-              >
-                Select a Scraper
-              </button> */}
-              {/* <div className="border-none my-1" /> */}
               <p className="px-3 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Scrapers</p>
               <div className="border-t border-gray-100 my-1" />
               {scrapers.map(s => (
@@ -246,24 +295,37 @@ function ScraperScopePicker({ scrapers, tenders, scraperId, tenderName, onSelect
                 {scrapers.find(s => s.scraperId === viewScraper)?.name ?? viewScraper} · tenders
               </button>
               <div className="border-t border-gray-100 my-1" />
+              <p className="px-3 py-1 text-[10px] text-gray-400">Select any number to compare across them.</p>
               {viewTenders.length === 0 && <p className="px-3 py-2 text-xs text-gray-400">No tenders for this scraper yet.</p>}
-              {viewTenders.map(t => (
-                <button
-                  key={t.tenderName}
-                  onClick={() => { onSelect(viewScraper, t.tenderName); setOpen(false); }}
-                  className={[
-                    'w-full text-left px-3 py-2 hover:bg-gray-50',
-                    t.tenderName === tenderName ? 'bg-blue-50' : '',
-                  ].join(' ')}
-                >
-                  <span className={['block truncate text-sm', t.tenderName === tenderName ? 'text-blue-800 font-medium' : 'text-gray-700'].join(' ')}>
-                    {t.title}
-                  </span>
-                  <span className="block truncate text-[11px] text-gray-400">
-                    {t.client || t.tenderId}{t.status === 'pushed' ? ` · ${t.pushedInquiryId}` : ' · not pushed'}
-                  </span>
-                </button>
-              ))}
+              {viewTenders.map(t => {
+                const checked = selected.includes(t.tenderName);
+                return (
+                  <button
+                    key={t.tenderName}
+                    onClick={() => onToggle(t.tenderName)}
+                    className={['w-full flex items-start gap-2 text-left px-3 py-2 hover:bg-gray-50', checked ? 'bg-blue-50' : ''].join(' ')}
+                  >
+                    <span className={[
+                      'mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border',
+                      checked ? 'border-blue-600 bg-blue-600' : 'border-gray-300',
+                    ].join(' ')}>
+                      {checked && (
+                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                          <path d="M1 4L3 6L7 2" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </span>
+                    <span className="min-w-0">
+                      <span className={['block truncate text-sm', checked ? 'text-blue-800 font-medium' : 'text-gray-700'].join(' ')}>
+                        {t.title}
+                      </span>
+                      <span className="block truncate text-[11px] text-gray-400">
+                        {t.client || t.tenderId}{t.status === 'pushed' ? ` · ${t.pushedInquiryId}` : ' · not pushed'}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </>
           )}
         </div>
@@ -278,6 +340,38 @@ function ChartBlock({ spec }: { spec: ChartSpec }) {
   return <StatTile spec={spec} />;
 }
 
+function ModelAnswer({ text }: { text: string }) {
+  return (
+    <>
+      {parseSegments(text).map((seg, j) =>
+        seg.kind === 'chart' ? (
+          <ChartBlock key={j} spec={seg.spec} />
+        ) : seg.kind === 'raw' ? (
+          <pre key={j} className="my-1 rounded bg-gray-100 p-2 text-xs text-gray-600 overflow-x-auto">{seg.text}</pre>
+        ) : (
+          splitTables(seg.text).map((part, k) =>
+            part.kind === 'table' ? (
+              <div key={`${j}-${k}`} className="my-1">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => downloadBlob(tableToCsv(part.table), 'text/csv', 'table.csv')}
+                    className="text-[10px] text-blue-600 hover:underline"
+                  >
+                    Export CSV
+                  </button>
+                </div>
+                <div className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(part.table.raw) as string }} />
+              </div>
+            ) : (
+              <div key={`${j}-${k}`} className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(part.text) as string }} />
+            ),
+          )
+        ),
+      )}
+    </>
+  );
+}
+
 export default function ContextualSearch() {
   const [corpus, setCorpus] = useState<ApiCorpusDoc[] | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -285,9 +379,9 @@ export default function ContextualSearch() {
   const [provider, setProvider] = useState<LlmProvider>('gemini');
   const [scrapers, setScrapers] = useState<ApiScraper[]>([]);
   const [tenders, setTenders] = useState<ApiScrapedTender[]>([]);
-  const [scraperId, setScraperId] = useState('');
-  const [tenderName, setTenderName] = useState('');
+  const [selectedTenders, setSelectedTenders] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [chats, setChats] = useState<ApiSearchChatSummary[]>([]);
   const [chatId, setChatId] = useState('');
@@ -295,9 +389,21 @@ export default function ContextualSearch() {
   const [editingId, setEditingId] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [railOpen, setRailOpen] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
 
   useEffect(() => {
     api.search.corpus().then(setCorpus).catch(() => setCorpus([]));
@@ -306,12 +412,15 @@ export default function ContextualSearch() {
     api.scrapedTenders.list(1, 100).then(res => setTenders(res.items)).catch(() => { });
   }, []);
 
-  const selectedTender = tenders.find(t => t.tenderName === tenderName);
   const docIds = useMemo(() => {
-    if (!selectedTender?.pushedInquiryId || !corpus) return [];
-    return corpus.filter(c => c.inquiryId === selectedTender.pushedInquiryId).map(c => c.docId);
-  }, [selectedTender, corpus]);
-  const tenderHasNoDocs = !!tenderName && docIds.length === 0;
+    if (selectedTenders.length === 0 || !corpus) return [];
+    const inquiryIds = new Set(
+      tenders.filter(t => selectedTenders.includes(t.tenderName) && t.pushedInquiryId).map(t => t.pushedInquiryId!),
+    );
+    if (inquiryIds.size === 0) return [];
+    return corpus.filter(c => inquiryIds.has(c.inquiryId)).map(c => c.docId);
+  }, [selectedTenders, tenders, corpus]);
+  const tenderHasNoDocs = selectedTenders.length > 0 && docIds.length === 0;
 
   const openChat = async (id: string) => {
     if (busy) return;
@@ -319,6 +428,7 @@ export default function ContextualSearch() {
       const chat = await api.search.chat(id);
       setChatId(chat.chatId);
       setMessages(chat.messages.map(m => ({ role: m.role, text: m.text, sources: m.sources })));
+      setSelectedTenders(chat.scopeTenderNames ?? []);
       setError('');
     } catch {
       setError('Failed to load chat.');
@@ -337,6 +447,7 @@ export default function ContextualSearch() {
     setEditingId('');
     const current = chats.find(c => c.chatId === id);
     if (!title || !current || title === current.title) return;
+    if (!window.confirm(`Rename "${current.title}" to "${title}"?`)) return;
     try {
       await api.search.renameChat(id, title);
       setChats(prev => prev.map(c => (c.chatId === id ? { ...c, title } : c)));
@@ -346,6 +457,8 @@ export default function ContextualSearch() {
   };
 
   const removeChat = async (id: string) => {
+    const current = chats.find(c => c.chatId === id);
+    if (!window.confirm(`Delete "${current?.title ?? 'this chat'}"? This can't be undone.`)) return;
     try {
       await api.search.deleteChat(id);
       setChats(prev => prev.filter(c => c.chatId !== id));
@@ -379,8 +492,11 @@ export default function ContextualSearch() {
     const history = messages.map(m => ({ role: m.role, text: m.text }));
     setMessages(prev => [...prev, { role: 'user', text: question }]);
     setBusy(true);
+    setStreaming('');
     try {
-      const result = await api.search.ask(question, history, provider, docIds, chatId);
+      const result = await api.search.ask(question, history, provider, docIds, chatId, delta => {
+        setStreaming(prev => (prev ?? '') + delta);
+      }, selectedTenders);
       setMessages(prev => [...prev, { role: 'model', text: result.answer, sources: result.sources }]);
       setChatId(result.chatId);
       api.search.chats().then(setChats).catch(() => { });
@@ -390,7 +506,54 @@ export default function ContextualSearch() {
       setInput(question);
     } finally {
       setBusy(false);
+      setStreaming(null);
     }
+  };
+
+  const openSourceDoc = async (docId: string, page: number) => {
+    try {
+      const doc = await api.documents.get(docId);
+      if (doc.presignedUrl) window.open(`${doc.presignedUrl}#page=${page}`, '_blank', 'noopener');
+    } catch {
+      setError('Could not open that document.');
+    }
+  };
+
+  const exportMarkdown = () => {
+    const title = chats.find(c => c.chatId === chatId)?.title || 'Contextual Search chat';
+    const md = messages.map(m => {
+      const who = m.role === 'user' ? '**You**' : '**Assistant**';
+      const sourceLine = m.sources?.length
+        ? `\n\nSources: ${m.sources.map(s => `${s.title} (p. ${s.pages.join(', ')})`).join('; ')}`
+        : '';
+      return `${who}:\n\n${m.text}${sourceLine}`;
+    }).join('\n\n---\n\n');
+    downloadBlob(`# ${title}\n\n${md}`, 'text/markdown', `${safeFileName(title)}.md`);
+  };
+
+  const exportPdf = () => {
+    const title = chats.find(c => c.chatId === chatId)?.title || 'Contextual Search chat';
+    const doc = new jsPDF();
+    const marginX = 14;
+    const maxWidth = 180;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let y = 18;
+    doc.setFontSize(14);
+    doc.text(title, marginX, y);
+    y += 10;
+    doc.setFontSize(10);
+    for (const m of messages) {
+      const who = m.role === 'user' ? 'You: ' : 'Assistant: ';
+      const body = m.text.replace(/```chart[\s\S]*?```/g, '[chart omitted]');
+      const lines = doc.splitTextToSize(who + body, maxWidth);
+      for (const line of lines) {
+        if (y > pageHeight - 16) { doc.addPage(); y = 18; }
+        doc.text(line, marginX, y);
+        y += 6;
+      }
+      y += 4;
+    }
+    doc.save(`${safeFileName(title)}.pdf`);
   };
 
   return (
@@ -493,13 +656,53 @@ export default function ContextualSearch() {
       </aside>
 
       <div className="flex flex-col h-full flex-1 max-w-4xl mx-auto px-6 py-6">
-        <div className="mb-4">
-          <h1 className="text-xl font-bold text-gray-900">Contextual Search</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {corpus === null
-              ? 'Loading corpus…'
-              : `Ask questions across ${corpus.length} indexed document${corpus.length === 1 ? '' : 's'}. Answers cite document and page.`}
-          </p>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Contextual Search</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {corpus === null
+                ? 'Loading corpus…'
+                : `Ask questions across ${corpus.length} indexed document${corpus.length === 1 ? '' : 's'}. Answers cite document and page.`}
+            </p>
+          </div>
+          {messages.length > 0 && (
+            <div ref={exportRef} className="relative shrink-0 pt-1">
+              <button
+                onClick={() => setExportOpen(o => !o)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:text-blue-600 hover:border-gray-300 hover:bg-gray-50 transition-all duration-150"
+                title="Export options"
+              >
+                <span>Export Chat</span>
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className={`text-gray-400 transition-transform duration-150 ${exportOpen ? 'rotate-180' : ''}`}>
+                  <path d="M1.5 3L4 5.5L6.5 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {exportOpen && (
+                <div className="absolute right-0 mt-1 z-20 w-32 rounded-md border border-gray-200 bg-white shadow-md py-1">
+                  <button
+                    onClick={() => {
+                      exportMarkdown();
+                      setExportOpen(false);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition-colors"
+                  >
+                    <span>Export as .md</span>
+                    {/* <span className="text-[9px] font-mono text-gray-400 bg-gray-100 px-1 py-0.5 rounded">MD</span> */}
+                  </button>
+                  <button
+                    onClick={() => {
+                      exportPdf();
+                      setExportOpen(false);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-left text-[11px] font-medium text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition-colors"
+                  >
+                    <span>Export as .pdf</span>
+                    {/* <span className="text-[9px] font-mono text-red-500 bg-red-50 px-1 py-0.5 rounded">PDF</span> */}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {corpus !== null && corpus.length === 0 && (
@@ -542,32 +745,33 @@ export default function ContextualSearch() {
                     : 'bg-white border border-gray-200 text-gray-800 shadow-sm rounded-bl-sm',
                 ].join(' ')}
               >
-                {m.role === 'user'
-                  ? m.text
-                  : parseSegments(m.text).map((seg, j) =>
-                    seg.kind === 'chart' ? (
-                      <ChartBlock key={j} spec={seg.spec} />
-                    ) : seg.kind === 'raw' ? (
-                      <pre key={j} className="my-1 rounded bg-gray-100 p-2 text-xs text-gray-600 overflow-x-auto">{seg.text}</pre>
-                    ) : (
-                      <div key={j} className="chat-markdown" dangerouslySetInnerHTML={{ __html: marked.parse(seg.text) as string }} />
-                    ),
-                  )}
+                {m.role === 'user' ? m.text : <ModelAnswer text={m.text} />}
                 {m.role === 'model' && (
                   <div className="mt-2.5 pt-2 border-t border-gray-100 flex flex-wrap items-center gap-1.5">
                     {m.sources && m.sources.length > 0 && (
                       <>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">Sources</span>
                         {m.sources.map(s => (
-                          <Link
+                          <span
                             key={s.docId}
-                            to={`/inquiry/${encodeURIComponent(s.inquiryId)}`}
                             className="inline-flex items-center gap-1 rounded-full bg-gray-100 hover:bg-gray-200 px-2.5 py-0.5 text-xs text-gray-600"
-                            title={`Inquiry ${s.inquiryId}`}
                           >
-                            {s.title}
-                            <span className="text-gray-400">p. {s.pages.join(', ')}</span>
-                          </Link>
+                            <button
+                              onClick={() => openSourceDoc(s.docId, s.pages[0])}
+                              className="hover:underline"
+                              title={`Open ${s.title} at page ${s.pages[0]}`}
+                            >
+                              {s.title}
+                              <span className="text-gray-400"> p. {s.pages.join(', ')}</span>
+                            </button>
+                            <Link
+                              to={`/inquiry/${encodeURIComponent(s.inquiryId)}`}
+                              className="text-gray-400 hover:text-blue-600"
+                              title={`Inquiry ${s.inquiryId}`}
+                            >
+                              ↗
+                            </Link>
+                          </span>
                         ))}
                       </>
                     )}
@@ -583,15 +787,21 @@ export default function ContextualSearch() {
               </div>
             </div>
           ))}
-          {busy && (
+          {streaming !== null && (
             <div className="flex justify-start">
-              <div className="flex items-center gap-2 rounded-lg bg-white border border-gray-200 px-4 py-3 shadow-sm">
-                <span className="flex gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:150ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:300ms]" />
-                </span>
-                <span className="text-xs text-gray-400">Searching documents…</span>
+              <div className="max-w-[85%] rounded-lg px-4 py-2.5 text-sm bg-white border border-gray-200 text-gray-800 shadow-sm rounded-bl-sm">
+                {streaming === '' ? (
+                  <div className="flex items-center gap-2">
+                    <span className="flex gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:150ms]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:300ms]" />
+                    </span>
+                    <span className="text-xs text-gray-400">Searching documents…</span>
+                  </div>
+                ) : (
+                  <ModelAnswer text={streaming} />
+                )}
               </div>
             </div>
           )}
@@ -604,26 +814,33 @@ export default function ContextualSearch() {
           <ScraperScopePicker
             scrapers={scrapers}
             tenders={tenders}
-            scraperId={scraperId}
-            tenderName={tenderName}
-            onSelect={(s, t) => { setScraperId(s); setTenderName(t); }}
+            selected={selectedTenders}
+            onToggle={t => setSelectedTenders(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
           />
           <PillSelect label="Model" value={provider} onChange={v => setProvider(v as LlmProvider)}>
             <option value="gemini">Gemini</option>
             <option value="openai">OpenAI</option>
           </PillSelect>
-          {tenderName && (
+          {selectedTenders.map(t => (
+            <span key={t} className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 pl-2.5 pr-1.5 py-0.5 text-[11px]">
+              {tenders.find(x => x.tenderName === t)?.title ?? t}
+              <button onClick={() => setSelectedTenders(prev => prev.filter(x => x !== t))} className="text-blue-400 hover:text-blue-700" title="Remove from scope">
+                ✕
+              </button>
+            </span>
+          ))}
+          {selectedTenders.length > 0 && (
             <button
-              onClick={() => { setScraperId(''); setTenderName(''); }}
+              onClick={() => setSelectedTenders([])}
               className="text-[11px] text-blue-600 hover:underline shrink-0"
               title="Search all documents again"
             >
-              clear
+              clear all
             </button>
           )}
           {tenderHasNoDocs && (
             <span className="text-[11px] text-amber-600">
-              No indexed documents for this tender yet — push it to sales and build its page indexes first.
+              No indexed documents for the selected tender(s) yet — push to sales and build page indexes first.
             </span>
           )}
         </div>
@@ -646,9 +863,11 @@ export default function ContextualSearch() {
                 if (inputRef.current) inputRef.current.style.height = 'auto';
               }
             }}
-            placeholder={tenderName
-              ? `Ask about "${selectedTender?.title ?? tenderName}"…`
-              : 'Ask across all indexed documents…'}
+            placeholder={selectedTenders.length === 1
+              ? `Ask about "${tenders.find(t => t.tenderName === selectedTenders[0])?.title ?? selectedTenders[0]}"…`
+              : selectedTenders.length > 1
+                ? `Ask across ${selectedTenders.length} selected tenders…`
+                : 'Ask across all indexed documents…'}
             disabled={(corpus !== null && corpus.length === 0) || tenderHasNoDocs}
             className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
           />

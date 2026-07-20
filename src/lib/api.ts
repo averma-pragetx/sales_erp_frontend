@@ -127,6 +127,7 @@ export interface ApiSearchChatMessage {
 export interface ApiSearchChat {
   chatId: string;
   title: string;
+  scopeTenderNames: string[];
   messages: ApiSearchChatMessage[];
   updatedAt: string;
 }
@@ -758,11 +759,57 @@ export const api = {
 
   search: {
     corpus: () => request<ApiCorpusDoc[]>('/api/search/corpus'),
-    ask: (question: string, history: ApiPageIndexChatTurn[], provider: LlmProvider, docIds?: string[], chatId?: string) =>
-      request<ApiSearchResult>('/api/search/ask', {
+    // ponytail: SSE over plain fetch (no EventSource — it can't POST a body); parses
+    // "data: {...}\n\n" frames by hand instead of pulling in an SSE client library.
+    ask: async (
+      question: string,
+      history: ApiPageIndexChatTurn[],
+      provider: LlmProvider,
+      docIds: string[] | undefined,
+      chatId: string | undefined,
+      onToken: (delta: string) => void,
+      scopeTenderNames?: string[],
+    ): Promise<ApiSearchResult> => {
+      const res = await fetch(API_BASE + '/api/search/ask', {
         method: 'POST',
-        body: JSON.stringify({ question, history, provider, docIds: docIds?.length ? docIds : undefined, chatId: chatId || undefined }),
-      }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question, history, provider,
+          docIds: docIds?.length ? docIds : undefined,
+          chatId: chatId || undefined,
+          scopeTenderNames: scopeTenderNames?.length ? scopeTenderNames : undefined,
+        }),
+      });
+      if (!res.ok || !res.body) {
+        const body = await res.text();
+        throw new Error(`${res.status} ${res.statusText}: ${body}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let answer = '';
+      let final: { sources: ApiSearchSource[]; chatId: string } | null = null;
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const frames = buf.split('\n\n');
+        buf = frames.pop() ?? '';
+        for (const frame of frames) {
+          const line = frame.trim();
+          if (!line.startsWith('data: ')) continue;
+          const payload = JSON.parse(line.slice(6));
+          if (payload.error) throw new Error(payload.error);
+          if (typeof payload.token === 'string') { answer += payload.token; onToken(payload.token); }
+          else if (payload.done) final = { sources: payload.sources, chatId: payload.chatId };
+        }
+      }
+
+      if (!final) throw new Error('Search stream ended unexpectedly.');
+      return { answer, sources: final.sources, chatId: final.chatId };
+    },
     chats: () => request<ApiSearchChatSummary[]>('/api/search/chats'),
     chat: (chatId: string) => request<ApiSearchChat>(`/api/search/chats/${chatId}`),
     renameChat: (chatId: string, title: string) =>
