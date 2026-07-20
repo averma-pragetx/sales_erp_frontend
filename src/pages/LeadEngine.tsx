@@ -212,10 +212,11 @@ export function ScraperCard({ scraper, onClick, onSchedule }: { scraper: ApiScra
 export default function LeadEngine() {
   const navigate = useNavigate();
   const [scrapers, setScrapers] = useState<ApiScraper[]>([]);
+  const [loading, setLoading] = useState(true);
   const [scheduleFor, setScheduleFor] = useState<ApiScraper | null>(null);
 
   useEffect(() => {
-    api.scrapers.list().then(setScrapers).catch(() => { });
+    api.scrapers.list().then(setScrapers).catch(() => { }).finally(() => setLoading(false));
   }, []);
 
   return (
@@ -233,14 +234,24 @@ export default function LeadEngine() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5 mb-4">
-        {scrapers.map(scraper => (
-          <ScraperCard
-            key={scraper.scraperId}
-            scraper={scraper}
-            onClick={() => navigate(`/tender-intel/scraper/${encodeURIComponent(scraper.scraperId)}`)}
-            onSchedule={() => setScheduleFor(scraper)}
-          />
-        ))}
+        {loading
+          ? Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 px-3.5 py-3 h-[220px] animate-pulse">
+                <div className="h-3.5 w-2/3 bg-gray-200 rounded" />
+                <div className="h-2.5 w-1/3 bg-gray-100 rounded mt-2" />
+                <div className="h-2.5 w-full bg-gray-100 rounded mt-4" />
+                <div className="h-8 w-full bg-gray-100 rounded mt-4" />
+                <div className="h-10 w-full bg-gray-100 rounded mt-4" />
+              </div>
+            ))
+          : scrapers.map(scraper => (
+              <ScraperCard
+                key={scraper.scraperId}
+                scraper={scraper}
+                onClick={() => navigate(`/tender-intel/scraper/${encodeURIComponent(scraper.scraperId)}`)}
+                onSchedule={() => setScheduleFor(scraper)}
+              />
+            ))}
       </div>
 
       {scheduleFor && <ScheduleDialog scraper={scheduleFor} onClose={() => setScheduleFor(null)} />}
