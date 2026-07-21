@@ -135,6 +135,7 @@ export interface ApiSearchChat {
 export interface ApiCorpusDoc {
   docId: string;
   title: string;
+  fileName: string;
   inquiryId: string;
   pageCount: number;
   builtAt: string | null;
@@ -590,10 +591,19 @@ export const api = {
       `${API_BASE}/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/download?zip=1`,
     files: (tenderName: string) =>
       request<{ files: ApiTenderFile[] }>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/files`),
+    zippedFiles: (tenderName: string) =>
+      request<{ files: { fileName: string; mimeType: string; fileSize: number }[] }>(
+        `/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/zipped`
+      ),
     analyseFile: (tenderName: string, fileName: string) =>
       request<{ meta: ApiDocMeta }>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/analyse`, {
         method: 'POST',
         body: JSON.stringify({ fileName }),
+      }),
+    buildIndex: (tenderName: string, fileName: string, provider: LlmProvider) =>
+      request<ApiPageIndex>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/build-index`, {
+        method: 'POST',
+        body: JSON.stringify({ fileName, provider }),
       }),
     analyse: (tenderName: string) =>
       request<ApiScrapedTender>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/analyse`, { method: 'POST' }),

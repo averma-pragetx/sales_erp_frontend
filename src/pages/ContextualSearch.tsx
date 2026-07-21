@@ -380,6 +380,9 @@ export default function ContextualSearch() {
   const [scrapers, setScrapers] = useState<ApiScraper[]>([]);
   const [tenders, setTenders] = useState<ApiScrapedTender[]>([]);
   const [selectedTenders, setSelectedTenders] = useState<string[]>([]);
+  const [tenderDocs, setTenderDocs] = useState<{ tenderName: string; fileName: string }[]>([]);
+  const [buildingKey, setBuildingKey] = useState('');
+  const [buildErrors, setBuildErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -412,15 +415,57 @@ export default function ContextualSearch() {
     api.scrapedTenders.list(1, 100).then(res => setTenders(res.items)).catch(() => { });
   }, []);
 
+  // A pushed tender's docs live in the corpus under its Inquiry id; an
+  // unpushed one's docs (built straight from the tender's own files, see
+  // below) live under the tender name itself — build-index uses the same key.
+  const scopeKey = (t: ApiScrapedTender) => t.pushedInquiryId ?? t.tenderName;
+
   const docIds = useMemo(() => {
     if (selectedTenders.length === 0 || !corpus) return [];
-    const inquiryIds = new Set(
-      tenders.filter(t => selectedTenders.includes(t.tenderName) && t.pushedInquiryId).map(t => t.pushedInquiryId!),
-    );
-    if (inquiryIds.size === 0) return [];
-    return corpus.filter(c => inquiryIds.has(c.inquiryId)).map(c => c.docId);
+    const scopeKeys = new Set(tenders.filter(t => selectedTenders.includes(t.tenderName)).map(scopeKey));
+    if (scopeKeys.size === 0) return [];
+    return corpus.filter(c => scopeKeys.has(c.inquiryId)).map(c => c.docId);
   }, [selectedTenders, tenders, corpus]);
   const tenderHasNoDocs = selectedTenders.length > 0 && docIds.length === 0;
+
+  // Same gate the per-document chatbot uses: a doc only shows up in the corpus
+  // once its page index build finishes, so any tender PDF missing from
+  // `corpus` for the selected tenders needs a chat index built before it's
+  // searchable here — regardless of whether the tender's been pushed to sales.
+  // The real tender documents live in the zip, not the loose "tender details"
+  // cover page, so PDFs are sourced from there.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (selectedTenders.length === 0 || !corpus) { setTenderDocs([]); return; }
+      const selected = tenders.filter(t => selectedTenders.includes(t.tenderName));
+      const results = await Promise.all(selected.map(async t => {
+        const key = scopeKey(t);
+        const indexedNames = new Set(corpus.filter(c => c.inquiryId === key).map(c => c.fileName));
+        const { files } = await api.scrapedTenders.zippedFiles(t.tenderName).catch(() => ({ files: [] }));
+        return files
+          .filter(f => !indexedNames.has(f.fileName))
+          .map(f => ({ tenderName: t.tenderName, fileName: f.fileName }));
+      }));
+      if (!cancelled) setTenderDocs(results.flat());
+    })();
+    return () => { cancelled = true; };
+  }, [selectedTenders, tenders, corpus]);
+
+  const buildTenderIndex = async (tenderName: string, fileName: string) => {
+    const key = `${tenderName}::${fileName}`;
+    setBuildingKey(key);
+    setBuildErrors(prev => { const next = { ...prev }; delete next[key]; return next; });
+    try {
+      await api.scrapedTenders.buildIndex(tenderName, fileName, provider);
+      setTenderDocs(prev => prev.filter(d => !(d.tenderName === tenderName && d.fileName === fileName)));
+      api.search.corpus().then(setCorpus).catch(() => { });
+    } catch (e) {
+      setBuildErrors(prev => ({ ...prev, [key]: e instanceof Error ? e.message : 'Failed to build index.' }));
+    } finally {
+      setBuildingKey('');
+    }
+  };
 
   const openChat = async (id: string) => {
     if (busy) return;
@@ -819,7 +864,7 @@ export default function ContextualSearch() {
           />
           <PillSelect label="Model" value={provider} onChange={v => setProvider(v as LlmProvider)}>
             <option value="gemini">Gemini</option>
-            <option value="openai">OpenAI</option>
+            {/* <option value="openai">OpenAI</option> */}
             <option value="claude">Claude</option>
           </PillSelect>
           {selectedTenders.map(t => (
@@ -839,12 +884,40 @@ export default function ContextualSearch() {
               clear all
             </button>
           )}
-          {tenderHasNoDocs && (
+          {tenderHasNoDocs && tenderDocs.length === 0 && (
             <span className="text-[11px] text-amber-600">
-              No indexed documents for the selected tender(s) yet — push to sales and build page indexes first.
+              No PDF documents found for the selected tender(s) to index.
             </span>
           )}
         </div>
+
+        {tenderDocs.length > 0 && (
+          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 space-y-1.5">
+            <p>
+              {tenderDocs.length} document{tenderDocs.length === 1 ? '' : 's'} in the selected tender{selectedTenders.length === 1 ? '' : 's'} {tenderDocs.length === 1 ? 'has' : 'have'} no chat index yet.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {tenderDocs.map(d => {
+                const key = `${d.tenderName}::${d.fileName}`;
+                return (
+                  <span key={key} className="inline-flex items-center gap-1.5 rounded-full bg-white border border-amber-300 pl-2 pr-1 py-0.5">
+                    <span className="truncate max-w-[160px]" title={`${d.tenderName} — ${d.fileName}`}>{d.fileName}</span>
+                    <button
+                      onClick={() => buildTenderIndex(d.tenderName, d.fileName)}
+                      disabled={buildingKey === key}
+                      className="px-1.5 py-0.5 text-[10px] font-semibold text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {buildingKey === key ? 'Building…' : 'Build Knowledge Graph'}
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+            {Object.entries(buildErrors).map(([key, msg]) => (
+              <p key={key} className="text-red-600">{key.split('::')[1]}: {msg}</p>
+            ))}
+          </div>
+        )}
 
         <div className="flex gap-2 pt-2">
           <textarea
