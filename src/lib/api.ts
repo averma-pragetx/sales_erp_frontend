@@ -63,7 +63,7 @@ export interface ApiPageIndexNode {
   nodes: ApiPageIndexNode[];
 }
 
-export type LlmProvider = 'gemini' | 'openai';
+export type LlmProvider = 'gemini' | 'openai' | 'claude';
 
 export interface ApiPageIndex {
   documentId: string;

@@ -356,6 +356,7 @@ function UploadedDocsTable({
 const PROVIDER_LABELS: Record<LlmProvider, string> = {
   gemini: 'Gemini',
   openai: 'OpenAI',
+  claude: 'Claude',
 };
 
 // ─── Chat history — localStorage only, keyed per document ────────────────────
@@ -438,7 +439,7 @@ function ProviderDropdown({ provider, onChange }: { provider: LlmProvider; onCha
       onChange={e => onChange(e.target.value as LlmProvider)}
       className="text-[11px] h-10 font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-300"
     >
-      {(['gemini', 'openai'] as const).map(p => (
+      {(['gemini', 'openai', 'claude'] as const).map(p => (
         <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
       ))}
     </select>

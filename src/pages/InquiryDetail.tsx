@@ -90,7 +90,7 @@ export default function InquiryDetail() {
       {/* Top header */}
       <header className="border-b border-gray-200 px-6 pt-3 pb-4 shrink-0">
         <Link
-          to="/"
+          to="/sales-pipeline"
           className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mb-2"
         >
           ← Back to Inquiries

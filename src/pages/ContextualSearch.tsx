@@ -820,6 +820,7 @@ export default function ContextualSearch() {
           <PillSelect label="Model" value={provider} onChange={v => setProvider(v as LlmProvider)}>
             <option value="gemini">Gemini</option>
             <option value="openai">OpenAI</option>
+            <option value="claude">Claude</option>
           </PillSelect>
           {selectedTenders.map(t => (
             <span key={t} className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 pl-2.5 pr-1.5 py-0.5 text-[11px]">
