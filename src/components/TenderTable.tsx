@@ -54,6 +54,14 @@ const STATUS_STYLES: Record<ApiScrapedTender['status'], { label: string; classNa
 
 const PAGE_SIZE = 10;
 
+const ANALYSABLE_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
+
 function formatSize(bytes: number): string {
   return bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
@@ -85,25 +93,25 @@ function DocsDialog({
   const [metaError, setMetaError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.scrapedTenders.files(tender.tenderName)
+    api.scrapedTenders.zippedFiles(tender.tenderName)
       .then(({ files }) => setFiles(files))
       .catch(e => setError(String(e)));
   }, [tender.tenderName]);
 
   const file = files?.[selected] ?? null;
 
-  useEffect(() => {
-    if (!file || file.meta || file.mimeType !== 'application/pdf') return;
+  function handleAnalyseFile(force: boolean) {
+    if (!file) return;
     const fileName = file.fileName;
     setAnalysing(true);
     setMetaError(null);
-    api.scrapedTenders.analyseFile(tender.tenderName, fileName)
+    api.scrapedTenders.analyseFile(tender.tenderName, fileName, force)
       .then(({ meta }) =>
         setFiles(prev => prev?.map(f => (f.fileName === fileName ? { ...f, meta } : f)) ?? prev)
       )
       .catch(e => setMetaError(String(e)))
       .finally(() => setAnalysing(false));
-  }, [tender.tenderName, file]);
+  }
 
   const meta = file?.meta ?? null;
   const dueDays = meta?.dueDate ? daysUntil(meta.dueDate) : null;
@@ -139,8 +147,8 @@ function DocsDialog({
                   i === selected ? 'border-blue-400 ring-1 ring-blue-200' : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <span className="shrink-0 w-9 h-9 rounded-md bg-red-50 text-red-600 text-[10px] font-bold flex items-center justify-center">
-                  PDF
+                <span className="shrink-0 w-9 h-9 rounded-md bg-red-50 text-red-600 text-[10px] font-bold flex items-center justify-center uppercase">
+                  {f.fileName.split('.').pop()?.slice(0, 4) || '?'}
                 </span>
                 <span className="text-sm text-gray-800 break-all">{f.fileName}</span>
               </button>
@@ -165,7 +173,17 @@ function DocsDialog({
                     .filter(Boolean).join(' · ')}
                 </p>
 
-                {analysing && <p className="text-sm text-gray-400 mt-6">Analysing with Gemini…</p>}
+                {ANALYSABLE_MIME_TYPES.has(file.mimeType) && (
+                  <button
+                    onClick={() => handleAnalyseFile(!!meta)}
+                    disabled={analysing}
+                    className="mt-3 px-3 py-1.5 text-xs font-semibold rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40"
+                  >
+                    {analysing ? 'Analysing…' : meta ? 'Re-analyse' : 'Analyse'}
+                  </button>
+                )}
+
+                {analysing && <p className="text-sm text-gray-400 mt-6">Analysing…</p>}
                 {metaError && <p className="text-sm text-red-500 mt-6">{metaError}</p>}
                 {!analysing && !metaError && meta && (
                   <>

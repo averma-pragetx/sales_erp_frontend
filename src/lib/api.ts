@@ -592,13 +592,11 @@ export const api = {
     files: (tenderName: string) =>
       request<{ files: ApiTenderFile[] }>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/files`),
     zippedFiles: (tenderName: string) =>
-      request<{ files: { fileName: string; mimeType: string; fileSize: number }[] }>(
-        `/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/zipped`
-      ),
-    analyseFile: (tenderName: string, fileName: string) =>
+      request<{ files: ApiTenderFile[] }>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/zipped`),
+    analyseFile: (tenderName: string, fileName: string, force = false) =>
       request<{ meta: ApiDocMeta }>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/analyse`, {
         method: 'POST',
-        body: JSON.stringify({ fileName }),
+        body: JSON.stringify({ fileName, force }),
       }),
     buildIndex: (tenderName: string, fileName: string, provider: LlmProvider) =>
       request<ApiPageIndex>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/build-index`, {
