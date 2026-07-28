@@ -1899,7 +1899,7 @@ function Stage4Content({ inquiry, documents, completedUpTo, onRefresh }: Stage4C
           onChange={e => setSelectedDocId(e.target.value)}
           className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
         >
-          <option value="">Auto-select document</option>
+          {/* <option value="">Auto-select document</option> */}
           {uploadedDocs.map(d => (
             <option key={d._id} value={d._id}>{d.title}</option>
           ))}
@@ -1947,6 +1947,12 @@ function Stage4Content({ inquiry, documents, completedUpTo, onRefresh }: Stage4C
             <span className="text-gray-400 text-xs">{meta.sourceDocuments.join(', ')}</span>
           )}
         </div>
+      )}
+
+      {status === 'done' && stage4 && stage4.tags.length === 0 && (
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          {stage4.extractionNotes || 'No tags were extracted from this document.'}
+        </p>
       )}
 
       {status === 'done' && stage4 && stage4.tags.length > 0 && (
