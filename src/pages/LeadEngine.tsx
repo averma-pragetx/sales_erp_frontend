@@ -228,9 +228,9 @@ export default function LeadEngine() {
             Analyse, approve/reject and push them to the Sales Pipeline once ready.
           </p>
         </div>
-        <span className="px-3 py-1.5 text-xs font-semibold rounded-md text-white bg-blue-700 hover:bg-blue-800 cursor-pointer">
+        {/* <span className="px-3 py-1.5 text-xs font-semibold rounded-md text-white bg-blue-700 hover:bg-blue-800 cursor-pointer">
           + Add Scraper
-        </span>
+        </span> */}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5 mb-4">

@@ -183,6 +183,14 @@ export type NewInquiryPayload = Omit<ApiInquiry, '_id' | 'createdAt'>;
 
 // ─── Scraped Tenders ──────────────────────────────────────────
 
+export interface ApiScoreCriterion {
+  criterion: string;
+  maxPoints: number;
+  points: number;
+  met: boolean;
+  reason: string;
+}
+
 export interface ApiScrapedTender {
   tenderName: string;
   scraperId: string;
@@ -195,8 +203,10 @@ export interface ApiScrapedTender {
   valueUnit: 'Mn' | 'Cr';
   dueDate: string;
   score: number | null;
+  scoreBreakdown: ApiScoreCriterion[];
   analysed: boolean;
   hasZip: boolean;
+  hasPdf: boolean;
   status: 'new' | 'approved' | 'rejected' | 'pushed';
   pushedInquiryId: string | null;
   createdAt: string;
@@ -589,6 +599,8 @@ export const api = {
       `${API_BASE}/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/download?file=${encodeURIComponent(fileName)}`,
     zipUrl: (tenderName: string) =>
       `${API_BASE}/api/scraped-tenders/${encodeURIComponent(tenderName)}/files/download?zip=1`,
+    pdfUrl: (tenderName: string) =>
+      `${API_BASE}/api/scraped-tenders/${encodeURIComponent(tenderName)}/pdf`,
     files: (tenderName: string) =>
       request<{ files: ApiTenderFile[] }>(`/api/scraped-tenders/${encodeURIComponent(tenderName)}/files`),
     zippedFiles: (tenderName: string) =>

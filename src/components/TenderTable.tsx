@@ -32,15 +32,71 @@ function DueCell({ dueDate }: { dueDate: string }) {
   return <span className={`text-sm font-medium ${color}`}>{days}d</span>;
 }
 
-function ScoreRing({ score }: { score: number | null }) {
+function ScoreRing({ score, onClick }: { score: number | null; onClick?: () => void }) {
   if (score === null) return <span className="text-gray-300 text-xs">—</span>;
   const color = score >= 85 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626';
   return (
-    <div
-      className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold"
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      title={onClick ? 'View scoring checklist' : undefined}
+      className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold hover:ring-2 hover:ring-blue-200 disabled:cursor-default"
       style={{ border: `2px solid ${color}`, color }}
     >
       {score}
+    </button>
+  );
+}
+
+function ScoreDialog({ tender, onClose }: { tender: ApiScrapedTender; onClose: () => void }) {
+  const criteria = tender.scoreBreakdown ?? [];
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl shadow-xl w-full max-w-md flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-200">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Fit Score · {tender.score ?? '—'}/100</h2>
+            <p className="font-mono text-xs text-gray-400 mt-0.5">{tender.tenderId}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+        </div>
+
+        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
+          {criteria.length === 0 && (
+            <p className="text-sm text-gray-400">No scoring breakdown available for this tender.</p>
+          )}
+          {criteria.map((c, i) => (
+            <div key={i} className="flex items-start gap-3">
+              <span
+                className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold mt-0.5 ${
+                  c.met ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                }`}
+              >
+                {c.met ? '✓' : '✕'}
+              </span>
+              <div className="flex-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-sm font-semibold text-gray-900">{c.criterion}</p>
+                  <p className="text-xs font-mono text-gray-500 whitespace-nowrap">{c.points}/{c.maxPoints}</p>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">{c.reason}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-end px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-100"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -253,6 +309,7 @@ export default function TenderTable({ scraperId, limit }: { scraperId?: string; 
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [docsFor, setDocsFor] = useState<ApiScrapedTender | null>(null);
+  const [scoreFor, setScoreFor] = useState<ApiScrapedTender | null>(null);
 
   useEffect(() => {
     // ponytail: fetch once, paginate client-side; 1000 cap fine at demo scale
@@ -350,7 +407,20 @@ export default function TenderTable({ scraperId, limit }: { scraperId?: string; 
               return (
                 <tr key={tender.tenderName} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 align-top">
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-gray-900">{tender.tenderId}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-semibold text-gray-900">{tender.tenderId}</p>
+                      {tender.hasPdf && (
+                        <a
+                          href={api.scrapedTenders.pdfUrl(tender.tenderName)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="View tender details PDF"
+                          className="shrink-0 w-4 h-4 rounded-full border border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-600 text-[10px] font-bold flex items-center justify-center"
+                        >
+                          i
+                        </a>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400">{formatCreatedAt(tender.createdAt)}</p>
                   </td>
                   <td className="px-4 py-3">
@@ -374,7 +444,9 @@ export default function TenderTable({ scraperId, limit }: { scraperId?: string; 
                     {formatValue(tender.value, tender.currency, tender.valueUnit)}
                   </td>
                   <td className="px-4 py-3"><DueCell dueDate={tender.dueDate} /></td>
-                  <td className="px-4 py-3"><ScoreRing score={tender.score} /></td>
+                  <td className="px-4 py-3">
+                    <ScoreRing score={tender.score} onClick={tender.score !== null ? () => setScoreFor(tender) : undefined} />
+                  </td>
                   <td className="px-4 py-3">
                     <button
                       onClick={() => setDocsFor(tender)}
@@ -453,6 +525,8 @@ export default function TenderTable({ scraperId, limit }: { scraperId?: string; 
           onClose={() => setDocsFor(null)}
         />
       )}
+
+      {scoreFor && <ScoreDialog tender={scoreFor} onClose={() => setScoreFor(null)} />}
     </div>
   );
 }
