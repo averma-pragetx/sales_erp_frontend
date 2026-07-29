@@ -1846,6 +1846,12 @@ function Stage4Content({ inquiry, documents, completedUpTo, onRefresh }: Stage4C
   const uploadedDocs = documents.filter(d => d.hasFile);
 
   useEffect(() => {
+    if (uploadedDocs.length && !uploadedDocs.some(d => d._id === selectedDocId)) {
+      setSelectedDocId(uploadedDocs[0]._id);
+    }
+  }, [uploadedDocs, selectedDocId]);
+
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
     api.stage4
@@ -2916,6 +2922,7 @@ function Stage6Content({ inquiry, completedUpTo, onRefresh }: Stage6ContentProps
 // ─── Stage 7: BOM Extraction + Cost Estimation ─────────────────────────────────
 interface Stage7ContentProps {
   inquiry: Inquiry;
+  documents: ApiDocument[];
   completedUpTo: number;
   onRefresh: () => void;
 }
@@ -3085,12 +3092,21 @@ function EquipmentCard({ eq, index }: { eq: EquipmentBom; index: number }) {
   );
 }
 
-function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps) {
+function Stage7Content({ inquiry, documents, completedUpTo, onRefresh }: Stage7ContentProps) {
   const [data, setData]             = useState<ApiStage7 | null>(null);
   const [loading, setLoading]       = useState(true);
   const [extracting, setExtracting] = useState(false);
   const [estimating, setEstimating] = useState(false);
   const [err, setErr]               = useState<string | null>(null);
+  const [selectedDocId, setSelectedDocId] = useState('');
+
+  const uploadedDocs = documents.filter(d => d.hasFile);
+
+  useEffect(() => {
+    if (uploadedDocs.length && !uploadedDocs.some(d => d._id === selectedDocId)) {
+      setSelectedDocId(uploadedDocs[0]._id);
+    }
+  }, [uploadedDocs, selectedDocId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3106,7 +3122,7 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
     setExtracting(true);
     setErr(null);
     try {
-      const result = await api.stage7.extract(inquiry.id);
+      const result = await api.stage7.extract(inquiry.id, selectedDocId || undefined);
       setData(result);
     } catch (e) {
       const msg = String(e);
@@ -3144,6 +3160,15 @@ function Stage7Content({ inquiry, completedUpTo, onRefresh }: Stage7ContentProps
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <select
+          value={selectedDocId}
+          onChange={e => setSelectedDocId(e.target.value)}
+          className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+        >
+          {uploadedDocs.map(d => (
+            <option key={d._id} value={d._id}>{d.title}</option>
+          ))}
+        </select>
         <button onClick={handleExtract} disabled={extracting || estimating} className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
           {extracting ? 'Extracting BOM…' : status === 'done' ? '↺ Re-extract BOM' : '✦ Extract BOM'}
         </button>
@@ -3903,7 +3928,7 @@ export default function StageContent({
         )}
 
         {stage.num === 7 && (
-          <Stage7Content inquiry={inquiry} completedUpTo={apiData.completedUpTo} onRefresh={onRefresh} />
+          <Stage7Content inquiry={inquiry} documents={documents} completedUpTo={apiData.completedUpTo} onRefresh={onRefresh} />
         )}
 
         {stage.num === 8 && (

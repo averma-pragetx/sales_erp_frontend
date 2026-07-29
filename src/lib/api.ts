@@ -725,8 +725,11 @@ export const api = {
   stage7: {
     get: (inquiryId: string) =>
       request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}`),
-    extract: (inquiryId: string) =>
-      request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}/extract`, { method: 'POST' }),
+    extract: (inquiryId: string, documentId?: string) =>
+      request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}/extract`, {
+        method: 'POST',
+        body: JSON.stringify(documentId ? { documentId } : {}),
+      }),
     estimateCost: (inquiryId: string) =>
       request<ApiStage7>(`/api/stage7/${encodeURIComponent(inquiryId)}/estimate-cost`, { method: 'POST' }),
   },
