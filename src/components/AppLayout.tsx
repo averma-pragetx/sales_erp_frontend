@@ -4,13 +4,15 @@ const NavItem = ({
   to,
   icon,
   label,
+  matchPrefix,
 }: {
   to: string;
   icon: React.ReactNode;
   label: string;
+  matchPrefix?: boolean;
 }) => {
   const location = useLocation();
-  const isActive = location.pathname === to;
+  const isActive = matchPrefix ? location.pathname.startsWith(to) : location.pathname === to;
 
   return (
     <NavLink
@@ -73,6 +75,21 @@ const SearchIcon = () => (
   </svg>
 );
 
+const MisIcon = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className="shrink-0"
+  >
+    <rect x="1.5" y="9" width="3" height="5.5" rx="0.5" fill="currentColor" opacity="0.85" />
+    <rect x="6.5" y="5.5" width="3" height="9" rx="0.5" fill="currentColor" opacity="0.85" />
+    <rect x="11.5" y="1.5" width="3" height="13" rx="0.5" fill="currentColor" opacity="0.85" />
+  </svg>
+);
+
 export default function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden">
@@ -91,6 +108,7 @@ export default function AppLayout() {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-0.5">
+          <NavItem to="/mis" icon={<MisIcon />} label="MIS Dashboards" matchPrefix />
           <NavItem to="/tender-intel" icon={<LeadEngineIcon />} label="Tender Intelligence" />
           <NavItem to="/sales-pipeline" icon={<KanbanIcon />} label="Sales Pipeline" />
           <NavItem to="/search" icon={<SearchIcon />} label="Contextual Search" />
