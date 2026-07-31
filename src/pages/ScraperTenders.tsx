@@ -4,9 +4,6 @@ import type { ApiScraper, ApiScrapedTender } from '../lib/api';
 import { api } from '../lib/api';
 import TenderTable from '../components/TenderTable';
 
-// ponytail: scripted demo sequence — each sync click reveals the next count, clamps at last
-const SYNC_STEPS = [3, 5, 9, 14, 16, 19];
-
 export default function ScraperTenders() {
   const navigate = useNavigate();
   const { scraperId = '' } = useParams();
@@ -14,8 +11,7 @@ export default function ScraperTenders() {
   const [tenders, setTenders] = useState<ApiScrapedTender[]>([]);
   const [loadingTenders, setLoadingTenders] = useState(true);
   const [syncKey, setSyncKey] = useState(0);
-  const [step, setStep] = useState(0);
-  const limit = SYNC_STEPS[Math.min(step, SYNC_STEPS.length - 1)];
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     api.scrapers.list()
@@ -24,12 +20,17 @@ export default function ScraperTenders() {
   }, [scraperId]);
 
   useEffect(() => {
+    // GET list syncs any new scraped_tenders into tender_leads server-side on every call
     setLoadingTenders(true);
-    api.scrapedTenders.list(1, limit, scraperId)
+    setSyncing(true);
+    api.scrapedTenders.list(1, 1000, scraperId)
       .then(({ items }) => setTenders(items))
       .catch(() => {})
-      .finally(() => setLoadingTenders(false));
-  }, [scraperId, limit, syncKey]);
+      .finally(() => {
+        setLoadingTenders(false);
+        setSyncing(false);
+      });
+  }, [scraperId, syncKey]);
 
   const scoredTenders = tenders.filter(t => t.score !== null);
   const avgScore = scoredTenders.length
@@ -52,13 +53,11 @@ export default function ScraperTenders() {
           {scraper && <p className="text-sm text-gray-500 mt-0.5">{scraper.target}</p>}
         </div>
         <button
-          onClick={() => {
-            setStep(s => s + 1);
-            setSyncKey(k => k + 1);
-          }}
-          className="px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700"
+          onClick={() => setSyncKey(k => k + 1)}
+          disabled={syncing}
+          className="px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
         >
-          Sync
+          {syncing ? 'Syncing…' : 'Sync'}
         </button>
       </div>
 
@@ -145,7 +144,7 @@ export default function ScraperTenders() {
       </div>
 
       {/* ponytail: key remount = refetch; GET list endpoint does the actual sync server-side */}
-      <TenderTable key={syncKey} scraperId={scraperId} limit={limit} />
+      <TenderTable key={syncKey} scraperId={scraperId} />
     </div>
   );
 }

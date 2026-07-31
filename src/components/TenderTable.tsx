@@ -369,6 +369,7 @@ export default function TenderTable({ scraperId, limit }: { scraperId?: string; 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [docsFor, setDocsFor] = useState<ApiScrapedTender | null>(null);
   const [scoreFor, setScoreFor] = useState<ApiScrapedTender | null>(null);
+  const [dateSort, setDateSort] = useState<'desc' | 'asc'>('desc');
 
   useEffect(() => {
     // ponytail: fetch once, paginate client-side; 1000 cap fine at demo scale
@@ -378,9 +379,13 @@ export default function TenderTable({ scraperId, limit }: { scraperId?: string; 
       .finally(() => setLoading(false));
   }, [limit, scraperId]);
 
-  const total = tenders.length;
+  const sorted = [...tenders].sort((a, b) => {
+    const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    return dateSort === 'asc' ? diff : -diff;
+  });
+  const total = sorted.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const visible = tenders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const visible = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   function updateTender(updated: ApiScrapedTender) {
     setTenders(prev => prev.map(t => (t.tenderName === updated.tenderName ? updated : t)));
@@ -437,6 +442,20 @@ export default function TenderTable({ scraperId, limit }: { scraperId?: string; 
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50">
+        <span className="text-xs text-gray-500">Sort by date:</span>
+        <select
+          value={dateSort}
+          onChange={e => {
+            setDateSort(e.target.value as 'desc' | 'asc');
+            setPage(1);
+          }}
+          className="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+        >
+          <option value="desc">Newest first</option>
+          <option value="asc">Oldest first</option>
+        </select>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

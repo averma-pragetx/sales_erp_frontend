@@ -26,7 +26,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/tender-intel" replace />} />
+          <Route path="/" element={<Navigate to="/mis" replace />} />
           <Route path="/sales-pipeline" element={<SalesPipeline />} />
           <Route path="/tender-intel" element={<LeadEngine />} />
           <Route path="/tender-intel/scraper/:scraperId" element={<ScraperTenders />} />
