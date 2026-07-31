@@ -18,6 +18,8 @@ import ProcurementDashboard from './pages/mis/ProcurementDashboard';
 import VendorIntelligenceDashboard from './pages/mis/VendorIntelligenceDashboard';
 import InventoryDashboard from './pages/mis/InventoryDashboard';
 import QualityDashboard from './pages/mis/QualityDashboard';
+import FinanceDashboard from './pages/mis/FinanceDashboard';
+import ProjectHealthDashboard from './pages/mis/ProjectHealthDashboard';
 
 export default function App() {
   return (
@@ -41,6 +43,8 @@ export default function App() {
           <Route path="/mis/vendor-intelligence" element={<VendorIntelligenceDashboard />} />
           <Route path="/mis/inventory-material" element={<InventoryDashboard />} />
           <Route path="/mis/quality" element={<QualityDashboard />} />
+          <Route path="/mis/finance" element={<FinanceDashboard />} />
+          <Route path="/mis/project-health" element={<ProjectHealthDashboard />} />
           <Route path="/mis/:id" element={<MisComingSoon />} />
         </Route>
         <Route path="/inquiry/:id" element={<InquiryDetail />} />

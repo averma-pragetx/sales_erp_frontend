@@ -122,7 +122,7 @@ export const MIS_DASHBOARDS: MisDashboardMeta[] = [
     path: '/mis/finance',
     purpose: "BC's transactional records bridged with AI forecasts — cash flow, profitability, and risk across the portfolio.",
     primaryUsers: ['Finance Head', 'CFO', 'MD', 'Project Directors'],
-    ready: false,
+    ready: true,
   },
   {
     id: 'project-health',
@@ -131,7 +131,7 @@ export const MIS_DASHBOARDS: MisDashboardMeta[] = [
     path: '/mis/project-health',
     purpose: 'Unified cross-functional health view per project — cost, schedule, engineering, procurement, quality, and risk.',
     primaryUsers: ['Project Directors', 'Project Managers', 'PMO'],
-    ready: false,
+    ready: true,
   },
 ];
 
