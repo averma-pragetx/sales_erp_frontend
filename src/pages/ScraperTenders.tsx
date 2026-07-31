@@ -129,9 +129,9 @@ export default function ScraperTenders() {
           <div className="absolute top-0 left-0 w-1 h-full bg-green-500" />
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Tenders Scraped · 24h</p>
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Tenders Scraped</p>
               <h3 className="text-base font-extrabold text-gray-900 mt-2 font-mono tracking-wider uppercase">
-                {scraper?.leads24h}
+                {scraper?.leads}
               </h3>
             </div>
             <div className="p-1.5 bg-green-50 text-green-600 rounded-lg">

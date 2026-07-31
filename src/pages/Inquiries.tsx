@@ -18,7 +18,7 @@ const PRIORITY_STYLES: Record<string, string> = {
   P3: 'bg-yellow-50 text-yellow-700 border border-yellow-200',
 };
 
-function formatValue(value: number, currency: 'USD' | 'INR', unit: 'Mn' | 'Cr'): string {
+function formatValue(value: number, currency: 'USD' | 'INR', unit: 'Mn' | 'Cr' | 'Lakh'): string {
   const symbol = currency === 'USD' ? '$' : '₹';
   return `${symbol} ${value.toFixed(2)} ${unit}`;
 }

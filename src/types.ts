@@ -8,7 +8,7 @@ export interface Inquiry {
   scope: string;
   value: number;
   currency: Currency;
-  valueUnit: 'Mn' | 'Cr';
+  valueUnit: 'Mn' | 'Cr' | 'Lakh';
   daysToBid: number;
   currentStage: number;
   currentStageName: string;

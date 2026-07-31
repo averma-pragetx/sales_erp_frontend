@@ -138,7 +138,7 @@ function ScheduleDialog({ scraper, onClose }: { scraper: ApiScraper; onClose: ()
 
 export function ScraperCard({ scraper, onClick, onSchedule }: { scraper: ApiScraper; onClick?: () => void; onSchedule?: () => void }) {
   const styles = SCRAPER_STATUS_STYLES[scraper.status] ?? SCRAPER_STATUS_STYLES.idle;
-  const conv = scraper.leads24h > 0 ? Math.round((scraper.qualified24h / scraper.leads24h) * 100) : 0;
+  const conv = scraper.leads > 0 ? Math.round((scraper.qualified / scraper.leads) * 100) : 0;
   return (
     <div
       // onClick={onClick}
@@ -171,11 +171,11 @@ export function ScraperCard({ scraper, onClick, onSchedule }: { scraper: ApiScra
       )}
       <div className="flex gap-2.5 mt-2.5">
         <div className="flex-1 px-2 py-1.5 bg-gray-100 rounded">
-          <p className="font-mono text-base font-bold text-gray-900 leading-none">{scraper.leads24h}</p>
+          <p className="font-mono text-base font-bold text-gray-900 leading-none">{scraper.leads}</p>
           <p className="text-[10px] uppercase tracking-wide text-gray-500 mt-1">tenders</p>
         </div>
         <div className="flex-1 px-2 py-1.5 bg-gray-100 rounded">
-          <p className="font-mono text-base font-bold text-gray-900 leading-none">{scraper.qualified24h}</p>
+          <p className="font-mono text-base font-bold text-gray-900 leading-none">{scraper.qualified}</p>
           <p className="text-[10px] uppercase tracking-wide text-gray-500 mt-1">qualified</p>
         </div>
         <div className="flex-1 px-2 py-1.5 bg-gray-100 rounded">

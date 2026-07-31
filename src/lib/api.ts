@@ -8,7 +8,7 @@ export interface ApiInquiry {
   scope: string;
   value: number;
   currency: 'USD' | 'INR';
-  valueUnit: 'Mn' | 'Cr';
+  valueUnit: 'Mn' | 'Cr' | 'Lakh';
   priority: 'P1' | 'P2' | 'P3';
   currentStage: number;
   currentStageName: string;
@@ -183,12 +183,18 @@ export type NewInquiryPayload = Omit<ApiInquiry, '_id' | 'createdAt'>;
 
 // ─── Scraped Tenders ──────────────────────────────────────────
 
+export interface ApiChecklistItem {
+  item: string;
+  met: boolean;
+}
+
 export interface ApiScoreCriterion {
   criterion: string;
   maxPoints: number;
   points: number;
   met: boolean;
   reason: string;
+  checklist: ApiChecklistItem[];
 }
 
 export interface ApiScrapedTender {
@@ -200,10 +206,11 @@ export interface ApiScrapedTender {
   source: string;
   value: number;
   currency: 'USD' | 'INR';
-  valueUnit: 'Mn' | 'Cr';
+  valueUnit: 'Mn' | 'Cr' | 'Lakh';
   dueDate: string;
   score: number | null;
   scoreBreakdown: ApiScoreCriterion[];
+  findings: string[];
   analysed: boolean;
   hasZip: boolean;
   hasPdf: boolean;
@@ -249,8 +256,8 @@ export interface ApiScraper {
   runtime: string;
   status: 'running' | 'idle' | 'error';
   errorMsg: string;
-  leads24h: number;
-  qualified24h: number;
+  leads: number;
+  qualified: number;
   quotaPct: number;
 }
 

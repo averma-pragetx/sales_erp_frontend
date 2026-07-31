@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { ApiScrapedTender, ApiTenderFile } from '../lib/api';
+import type { ApiScrapedTender, ApiTenderFile, ApiScoreCriterion } from '../lib/api';
 import { api } from '../lib/api';
 import LeadActionMenu from './LeadActionMenu';
 
-function formatValue(value: number, currency: 'USD' | 'INR', unit: 'Mn' | 'Cr'): string {
+function formatValue(value: number, currency: 'USD' | 'INR', unit: 'Mn' | 'Cr' | 'Lakh'): string {
   const symbol = currency === 'USD' ? '$' : '₹';
   return `${symbol} ${value.toFixed(2)} ${unit}`;
 }
@@ -48,12 +48,77 @@ function ScoreRing({ score, onClick }: { score: number | null; onClick?: () => v
   );
 }
 
-function ScoreDialog({ tender, onClose }: { tender: ApiScrapedTender; onClose: () => void }) {
-  const criteria = tender.scoreBreakdown ?? [];
+const SCORE_TABS = ['Score', 'Requirement', 'Findings'] as const;
+type ScoreTab = typeof SCORE_TABS[number];
+
+function ScoreTab_Score({ criteria }: { criteria: ApiScoreCriterion[] }) {
+  if (criteria.length === 0) return <p className="text-sm text-gray-400">No scoring breakdown available for this tender.</p>;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={onClose}>
+    <div className="space-y-3">
+      {criteria.map((c, i) => (
+        <div key={i} className="flex items-start gap-3">
+          <span
+            className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold mt-0.5 ${c.met ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}
+          >
+            {c.met ? '✓' : '✕'}
+          </span>
+          <div className="flex-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-sm font-semibold text-gray-900">{c.criterion}</p>
+              <p className="text-xs font-mono text-gray-500 whitespace-nowrap">{c.points}/{c.maxPoints}</p>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">{c.reason}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ScoreTab_Requirement({ criteria }: { criteria: ApiScoreCriterion[] }) {
+  const withChecklist = criteria.filter(c => (c.checklist ?? []).length > 0);
+  if (withChecklist.length === 0) return <p className="text-sm text-gray-400">No requirement checklist available for this tender.</p>;
+  return (
+    <div className="space-y-4">
+      {withChecklist.map((c, i) => (
+        <div key={i}>
+          <p className="text-sm font-semibold text-gray-900 mb-1.5">{c.criterion}</p>
+          <div className="space-y-1">
+            {c.checklist.map((item, j) => (
+              <div key={j} className="flex items-start gap-2">
+                <span className={`shrink-0 text-xs mt-0.5 ${item.met ? 'text-green-600' : 'text-red-500'}`}>
+                  {item.met ? '✓' : '✕'}
+                </span>
+                <p className={`text-xs ${item.met ? 'text-gray-600' : 'text-red-600 font-medium'}`}>{item.item}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ScoreTab_Findings({ findings }: { findings: string[] }) {
+  if (findings.length === 0) return <p className="text-sm text-gray-400">No findings available for this tender.</p>;
+  return (
+    <ul className="space-y-2 list-disc list-inside">
+      {findings.map((f, i) => (
+        <li key={i} className="text-sm text-gray-700">{f}</li>
+      ))}
+    </ul>
+  );
+}
+
+function ScoreDialog({ tender, onClose }: { tender: ApiScrapedTender; onClose: () => void }) {
+  const [tab, setTab] = useState<ScoreTab>('Score');
+  const criteria = tender.scoreBreakdown ?? [];
+  const findings = tender.findings ?? [];
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-md flex flex-col"
+        className="bg-white rounded-xl shadow-xl w-full h-[75%] max-w-md flex flex-col px-2 pb-2"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between px-6 py-4 border-b border-gray-200">
@@ -64,48 +129,43 @@ function ScoreDialog({ tender, onClose }: { tender: ApiScrapedTender; onClose: (
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
         </div>
 
-        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
-          {criteria.length === 0 && (
-            <p className="text-sm text-gray-400">No scoring breakdown available for this tender.</p>
-          )}
-          {criteria.map((c, i) => (
-            <div key={i} className="flex items-start gap-3">
-              <span
-                className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold mt-0.5 ${
-                  c.met ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+        <div className="flex border-b border-gray-200 px-6">
+          {SCORE_TABS.map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
-              >
-                {c.met ? '✓' : '✕'}
-              </span>
-              <div className="flex-1">
-                <div className="flex items-baseline justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-900">{c.criterion}</p>
-                  <p className="text-xs font-mono text-gray-500 whitespace-nowrap">{c.points}/{c.maxPoints}</p>
-                </div>
-                <p className="text-xs text-gray-500 mt-0.5">{c.reason}</p>
-              </div>
-            </div>
+            >
+              {t}
+            </button>
           ))}
         </div>
 
-        <div className="flex items-center justify-end px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+        <div className="p-5 max-h-[60vh] overflow-y-auto">
+          {tab === 'Score' && <ScoreTab_Score criteria={criteria} />}
+          {tab === 'Requirement' && <ScoreTab_Requirement criteria={criteria} />}
+          {tab === 'Findings' && <ScoreTab_Findings findings={findings} />}
+        </div>
+
+        {/* <div className="flex items-center justify-end px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-100"
           >
             Close
           </button>
-        </div>
+        </div> */}
       </div>
     </div>
   );
 }
 
 const STATUS_STYLES: Record<ApiScrapedTender['status'], { label: string; className: string }> = {
-  new:      { label: 'New',            className: 'bg-gray-100 text-gray-600' },
-  approved: { label: 'Approved',       className: 'bg-blue-100 text-blue-700' },
-  rejected: { label: 'Rejected',       className: 'bg-red-100 text-red-700' },
-  pushed:   { label: 'Pushed to Sales', className: 'bg-green-100 text-green-700' },
+  new: { label: 'New', className: 'bg-gray-100 text-gray-600' },
+  approved: { label: 'Approved', className: 'bg-blue-100 text-blue-700' },
+  rejected: { label: 'Rejected', className: 'bg-red-100 text-red-700' },
+  pushed: { label: 'Pushed to Sales', className: 'bg-green-100 text-green-700' },
 };
 
 const PAGE_SIZE = 10;
@@ -199,9 +259,8 @@ function DocsDialog({
               <button
                 key={f.fileName}
                 onClick={() => setSelected(i)}
-                className={`w-full flex items-center gap-3 text-left rounded-lg border px-3 py-3 mb-2 bg-white ${
-                  i === selected ? 'border-blue-400 ring-1 ring-blue-200' : 'border-gray-200 hover:border-gray-300'
-                }`}
+                className={`w-full flex items-center gap-3 text-left rounded-lg border px-3 py-3 mb-2 bg-white ${i === selected ? 'border-blue-400 ring-1 ring-blue-200' : 'border-gray-200 hover:border-gray-300'
+                  }`}
               >
                 <span className="shrink-0 w-9 h-9 rounded-md bg-red-50 text-red-600 text-[10px] font-bold flex items-center justify-center uppercase">
                   {f.fileName.split('.').pop()?.slice(0, 4) || '?'}
@@ -225,7 +284,7 @@ function DocsDialog({
                 </a>
                 <p className="font-mono text-xs text-gray-500 mt-1">
                   {[meta?.docType, formatSize(file.fileSize), meta ? `${meta.pages} pages` : null,
-                    `uploaded ${new Date(tender.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`]
+                  `uploaded ${new Date(tender.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`]
                     .filter(Boolean).join(' · ')}
                 </p>
 
@@ -473,11 +532,10 @@ export default function TenderTable({ scraperId, limit }: { scraperId?: string; 
                       <button
                         onClick={() => handleAnalyse(tender)}
                         disabled={busyId === tender.tenderName}
-                        className={`px-2.5 py-1 text-xs font-semibold rounded-md disabled:opacity-40 ${
-                          tender.analysed
+                        className={`px-2.5 py-1 text-xs font-semibold rounded-md disabled:opacity-40 ${tender.analysed
                             ? 'text-gray-600 border border-gray-200 hover:bg-gray-50'
                             : 'text-white bg-blue-600 hover:bg-blue-700'
-                        }`}
+                          }`}
                       >
                         {busyId === tender.tenderName ? '…' : tender.analysed ? 'Re-analyse' : 'Analyse'}
                       </button>
