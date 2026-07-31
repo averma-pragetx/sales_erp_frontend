@@ -382,7 +382,7 @@ export default function TenderTable({ scraperId, limit }: { scraperId?: string; 
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50 text-[11px] uppercase tracking-wide text-gray-400">
-              <th className="text-left font-semibold px-4 py-2.5">Tender ID</th>
+              <th className="text-left font-semibold px-4 py-2.5">Tender Reference Number</th>
               <th className="text-left font-semibold px-4 py-2.5">Client</th>
               <th className="text-left font-semibold px-4 py-2.5">Tender Title</th>
               <th className="text-left font-semibold px-4 py-2.5">Source</th>
