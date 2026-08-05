@@ -499,7 +499,7 @@ export default function TenderTable({ scraperId, limit }: { scraperId?: string; 
                         </a>
                       )}
                     </div>
-                    <p className="text-xs text-gray-400">{formatCreatedAt(tender.createdAt)}</p>
+                    <p className="text-xs text-gray-400 mt-2">Scraped at: {formatCreatedAt(tender.createdAt)}</p>
                   </td>
                   <td className="px-4 py-3">
                     <p className="font-medium text-gray-900">{tender.client || '—'}</p>
