@@ -558,21 +558,61 @@ export interface ApiStage8 {
 // In development it's empty and Vite's proxy handles /api/* → localhost:3000.
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
+const GENERIC_ERROR  = 'Something went wrong on our end. Please try again in a moment.';
+const OFFLINE_ERROR  = 'Cannot reach the server. Check your connection and try again.';
+
+// Blanking `name` makes the many `String(e)` render sites print the bare message
+// instead of "Error: message" — cheaper than rewriting every call site.
+function uiError(message: string): Error {
+  const err = new Error(message);
+  err.name = '';
+  return err;
+}
+
+// 5xx bodies carry stack traces and provider error JSON, so they never reach the
+// UI — only the console. 4xx bodies are our own hand-written validation strings,
+// which are written for the user and which Stage 7 reads to detect a missing
+// Stage 4, so those pass through.
+async function apiFailure(res: Response): Promise<Error> {
+  const body = await res.text();
+  console.error(`[api] ${res.status} ${res.statusText}`, body);
+
+  if (res.status >= 400 && res.status < 500) {
+    try {
+      const parsed = JSON.parse(body) as { error?: string };
+      if (parsed.error) return uiError(parsed.error);
+    } catch { /* non-JSON 4xx body — fall through to the generic message */ }
+  }
+  return uiError(GENERIC_ERROR);
+}
+
+async function fetchOrThrow(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (e) {
+    console.error('[api] network failure', url, e);
+    throw uiError(OFFLINE_ERROR);
+  }
+}
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const isFormData = options.body instanceof FormData;
 
-  const res = await fetch(API_BASE + url, {
+  const res = await fetchOrThrow(API_BASE + url, {
     ...options,
     headers: isFormData
       ? options.headers                                          // browser sets multipart boundary
       : { 'Content-Type': 'application/json', ...options.headers },
   });
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+  if (!res.ok) throw await apiFailure(res);
+
+  try {
+    return await res.json() as T;
+  } catch (e) {
+    console.error('[api] malformed JSON response', url, e);
+    throw uiError(GENERIC_ERROR);
   }
-  return res.json() as Promise<T>;
 }
 
 // ─── API surface ──────────────────────────────────────────────────────────────
@@ -800,7 +840,7 @@ export const api = {
       onToken: (delta: string) => void,
       scopeTenderNames?: string[],
     ): Promise<ApiSearchResult> => {
-      const res = await fetch(API_BASE + '/api/search/ask', {
+      const res = await fetchOrThrow(API_BASE + '/api/search/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -810,10 +850,8 @@ export const api = {
           scopeTenderNames: scopeTenderNames?.length ? scopeTenderNames : undefined,
         }),
       });
-      if (!res.ok || !res.body) {
-        const body = await res.text();
-        throw new Error(`${res.status} ${res.statusText}: ${body}`);
-      }
+      if (!res.ok) throw await apiFailure(res);
+      if (!res.body) throw uiError(GENERIC_ERROR);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -831,13 +869,13 @@ export const api = {
           const line = frame.trim();
           if (!line.startsWith('data: ')) continue;
           const payload = JSON.parse(line.slice(6));
-          if (payload.error) throw new Error(payload.error);
+          if (payload.error) { console.error('[api] search stream error', payload.error); throw uiError(GENERIC_ERROR); }
           if (typeof payload.token === 'string') { answer += payload.token; onToken(payload.token); }
           else if (payload.done) final = { sources: payload.sources, chatId: payload.chatId };
         }
       }
 
-      if (!final) throw new Error('Search stream ended unexpectedly.');
+      if (!final) throw uiError('The answer was cut off before it finished. Please ask again.');
       return { answer, sources: final.sources, chatId: final.chatId };
     },
     chats: () => request<ApiSearchChatSummary[]>('/api/search/chats'),

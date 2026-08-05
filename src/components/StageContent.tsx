@@ -1156,11 +1156,13 @@ function Stage1Content({ inquiry, apiData, documents, onDocumentsChange }: Stage
         return { ...doc, processingStatus: ai.processingStatus, processingError: ai.processingError ?? '', aiSummary: ai.aiSummary, keyItems: ai.keyItems, extractedSections: ai.extractedSections };
       }));
 
-      // Surface any per-document errors
+      // Name which documents failed, but keep the raw processingError in the
+      // console — it holds provider stack traces, not anything a user can act on.
       const failed = res.documents.filter(d => d.processingStatus === 'failed');
       if (failed.length > 0) {
+        console.error('[extract] failed documents', failed.map(d => ({ docType: d.docType, error: d.processingError })));
         setExtractErr(
-          failed.map(d => `${d.docType} — ${d.processingError || 'unknown error'}`).join('\n'),
+          `Could not extract ${failed.map(d => d.docType).join(', ')}. Try again, or re-upload the file if it keeps failing.`,
         );
       }
 
@@ -1583,7 +1585,7 @@ function GapAnalysisSection({
       {status === 'failed' && (
         <div>
           <p className="text-red-500 text-sm mb-2">
-            {gapAnalysis?.error ?? 'Analysis failed.'}
+            Gap analysis could not be completed. Please try again.
           </p>
           <button
             onClick={handleRunAnalysis}
@@ -1732,7 +1734,7 @@ function EmailDraftSection({
       {status === 'failed' && (
         <div>
           <p className="text-red-500 text-sm mb-2">
-            {emailDraft?.error ?? 'Email drafting failed.'}
+            The email draft could not be generated. Please try again.
           </p>
           <button
             onClick={handleDraftEmail}
@@ -1899,24 +1901,26 @@ function Stage4Content({ inquiry, documents, completedUpTo, onRefresh }: Stage4C
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
-        <select
-          value={selectedDocId}
-          onChange={e => setSelectedDocId(e.target.value)}
-          className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
-        >
-          {/* <option value="">Auto-select document</option> */}
-          {uploadedDocs.map(d => (
-            <option key={d._id} value={d._id}>{d.title}</option>
-          ))}
-        </select>
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <label className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+          Source document
+          <select
+            value={selectedDocId}
+            onChange={e => setSelectedDocId(e.target.value)}
+            className="w-72 border border-gray-300 rounded px-2 py-1.5 text-sm font-normal text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+          >
+            {uploadedDocs.map(d => (
+              <option key={d._id} value={d._id}>{d.title}</option>
+            ))}
+          </select>
+        </label>
 
         <button
           onClick={handleExtract}
           disabled={extracting}
-          className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+          className="shrink-0 whitespace-nowrap px-4 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
         >
-          {extracting ? 'Extracting…' : '✦ Extract Tag List'}
+          {extracting ? 'Extracting…' : status === 'done' ? '↺ Re-extract Tag List' : '✦ Extract Tag List'}
         </button>
 
         {stage4 && (
@@ -1941,7 +1945,7 @@ function Stage4Content({ inquiry, documents, completedUpTo, onRefresh }: Stage4C
       )}
 
       {status === 'failed' && (
-        <p className="text-red-500 text-sm">{stage4?.error ?? 'Extraction failed.'}</p>
+        <p className="text-red-500 text-sm">Tag list extraction could not be completed. Check the selected document and try again.</p>
       )}
 
       {status === 'done' && meta && (
@@ -2405,8 +2409,8 @@ function Stage5Content({ inquiry, completedUpTo, onRefresh }: Stage5ContentProps
       </div>
 
       {err && <p className="text-red-500 text-sm mb-4">{err}</p>}
-      {data?.error && status === 'failed' && (
-        <p className="text-red-400 text-xs mb-4 font-mono">{data.error}</p>
+      {status === 'failed' && (
+        <p className="text-red-500 text-sm mb-4">Compliance analysis could not be completed. Please try again.</p>
       )}
 
       {/* Summary stats */}
@@ -3160,20 +3164,23 @@ function Stage7Content({ inquiry, documents, completedUpTo, onRefresh }: Stage7C
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <select
-          value={selectedDocId}
-          onChange={e => setSelectedDocId(e.target.value)}
-          className="border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
-        >
-          {uploadedDocs.map(d => (
-            <option key={d._id} value={d._id}>{d.title}</option>
-          ))}
-        </select>
-        <button onClick={handleExtract} disabled={extracting || estimating} className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
+        <label className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+          Source document
+          <select
+            value={selectedDocId}
+            onChange={e => setSelectedDocId(e.target.value)}
+            className="w-72 border border-gray-300 rounded px-2 py-1.5 text-sm font-normal text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+          >
+            {uploadedDocs.map(d => (
+              <option key={d._id} value={d._id}>{d.title}</option>
+            ))}
+          </select>
+        </label>
+        <button onClick={handleExtract} disabled={extracting || estimating} className="shrink-0 whitespace-nowrap px-4 py-2 text-sm font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
           {extracting ? 'Extracting BOM…' : status === 'done' ? '↺ Re-extract BOM' : '✦ Extract BOM'}
         </button>
         {status === 'done' && (
-          <button onClick={handleEstimateCost} disabled={extracting || estimating} className="px-4 py-2 text-sm font-semibold text-white rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
+          <button onClick={handleEstimateCost} disabled={extracting || estimating} className="shrink-0 whitespace-nowrap px-4 py-2 text-sm font-semibold text-white rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50">
             {estimating ? 'Estimating…' : '₹ Re-estimate Costs'}
           </button>
         )}
@@ -3186,7 +3193,7 @@ function Stage7Content({ inquiry, documents, completedUpTo, onRefresh }: Stage7C
         {status === 'failed' && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">failed</span>}
       </div>
       {err && <p className="text-red-500 text-sm mb-4">{err}</p>}
-      {data?.error && status === 'failed' && <p className="text-red-400 text-xs mb-4 font-mono">{data.error}</p>}
+      {status === 'failed' && <p className="text-red-500 text-sm mb-4">BOM extraction could not be completed. Check the selected document and try again.</p>}
 
       {proj && (proj.client || proj.jobNo || proj.prNumber) && (
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 mb-4 px-1">
