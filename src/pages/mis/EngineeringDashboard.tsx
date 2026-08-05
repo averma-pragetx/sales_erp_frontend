@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Drawing, DrawingStatus, EcnImpact } from '../../data/mis/engineeringMock';
 import { DRAWINGS, ECNS, DRAWING_STATUSES, DISCIPLINES } from '../../data/mis/engineeringMock';
 import { CAT, STATUS_COLOR, countBy } from '../../components/mis/misUtils';
-import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips } from '../../components/mis/MisCharts';
+import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips, BackLink } from '../../components/mis/MisCharts';
 
 interface Filters {
   projectId?: string;
@@ -123,6 +123,7 @@ export default function EngineeringDashboard() {
 
   return (
     <div className="p-6 space-y-4">
+      <BackLink />
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

@@ -3,7 +3,7 @@ import type { RiskSeverity, ItemStatus } from '../../data/mis/bidIntelligenceMoc
 import { BID_INTEL_TENDERS, RISK_SEVERITIES, ANALYSTS } from '../../data/mis/bidIntelligenceMock';
 import { ALL_SECTORS, ALL_CLIENTS } from '../../data/mis/tenderPipelineMock';
 import { CAT, STATUS_COLOR, countBy } from '../../components/mis/misUtils';
-import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips } from '../../components/mis/MisCharts';
+import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips, BackLink } from '../../components/mis/MisCharts';
 
 interface Filters {
   sector?: string;
@@ -124,6 +124,7 @@ export default function BidIntelligenceDashboard() {
 
   return (
     <div className="p-6 space-y-4">
+      <BackLink />
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

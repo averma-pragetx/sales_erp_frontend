@@ -8,7 +8,7 @@ import {
 } from '../../data/mis/estimationMock';
 import { ALL_CLIENTS } from '../../data/mis/tenderPipelineMock';
 import { CAT, STATUS_COLOR, AXIS_TICK, GRID_STROKE, countBy } from '../../components/mis/misUtils';
-import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips } from '../../components/mis/MisCharts';
+import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips, BackLink } from '../../components/mis/MisCharts';
 
 interface Filters {
   stage?: EstimateStage;
@@ -138,6 +138,7 @@ export default function EstimationDashboard() {
 
   return (
     <div className="p-6 space-y-4">
+      <BackLink />
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

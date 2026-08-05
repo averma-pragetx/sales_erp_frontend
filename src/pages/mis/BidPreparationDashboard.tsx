@@ -3,7 +3,7 @@ import type { Bid, BidStage, InstrumentStatus } from '../../data/mis/bidPreparat
 import { BIDS, BID_STAGES } from '../../data/mis/bidPreparationMock';
 import { ALL_CLIENTS, ALL_BD_OWNERS, BD_CAPACITY } from '../../data/mis/tenderPipelineMock';
 import { CAT, STATUS_COLOR, countBy, daysUntil } from '../../components/mis/misUtils';
-import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips } from '../../components/mis/MisCharts';
+import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips, BackLink } from '../../components/mis/MisCharts';
 
 interface Filters {
   stage?: BidStage;
@@ -113,6 +113,7 @@ export default function BidPreparationDashboard() {
 
   return (
     <div className="p-6 space-y-4">
+      <BackLink />
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

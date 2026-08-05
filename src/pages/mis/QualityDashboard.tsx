@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Ncr, Inspection, NcrStatus, InspectionStatus } from '../../data/mis/qualityMock';
 import { NCRS, INSPECTIONS, PROJECT_QUALITY, NCR_STATUSES, INSPECTION_STATUSES, NCR_CATEGORIES } from '../../data/mis/qualityMock';
 import { CAT, STATUS_COLOR, countBy } from '../../components/mis/misUtils';
-import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips } from '../../components/mis/MisCharts';
+import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips, BackLink } from '../../components/mis/MisCharts';
 
 interface Filters {
   projectId?: string;
@@ -131,6 +131,7 @@ export default function QualityDashboard() {
 
   return (
     <div className="p-6 space-y-4">
+      <BackLink />
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

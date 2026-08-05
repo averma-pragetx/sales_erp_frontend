@@ -3,7 +3,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tool
 import { VENDOR_SCORECARDS, VENDOR_CATEGORIES, RELIABILITY_TREND } from '../../data/mis/vendorIntelligenceMock';
 import { RFQS } from '../../data/mis/procurementMock';
 import { CAT, AXIS_TICK, GRID_STROKE } from '../../components/mis/misUtils';
-import { StatTile, ChartCard, HBar, FilterSelect, Pill, FilterChips } from '../../components/mis/MisCharts';
+import { StatTile, ChartCard, HBar, FilterSelect, Pill, FilterChips, BackLink } from '../../components/mis/MisCharts';
 
 interface Filters {
   category?: string;
@@ -59,6 +59,7 @@ export default function VendorIntelligenceDashboard() {
 
   return (
     <div className="p-6 space-y-4">
+      <BackLink />
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

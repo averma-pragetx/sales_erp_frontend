@@ -6,7 +6,7 @@ import type { ProjectHealth, Trend } from '../../data/mis/projectHealthMock';
 import { PROJECT_HEALTH, CONSTRUCTION_PROGRESS } from '../../data/mis/projectHealthMock';
 import type { RiskLevel } from '../../data/mis/financeMock';
 import { CAT, STATUS_COLOR, AXIS_TICK, GRID_STROKE, countBy } from '../../components/mis/misUtils';
-import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips } from '../../components/mis/MisCharts';
+import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips, BackLink } from '../../components/mis/MisCharts';
 
 interface Filters {
   riskLevel?: RiskLevel;
@@ -107,6 +107,7 @@ export default function ProjectHealthDashboard() {
 
   return (
     <div className="p-6 space-y-4">
+      <BackLink />
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

@@ -5,7 +5,7 @@ import {
 import type { PurchaseOrder, PoStatus, RfqStatus, DeliveryRisk, Rfq } from '../../data/mis/procurementMock';
 import { PURCHASE_ORDERS, RFQS, PROCUREMENT_BUDGETS, PO_STATUSES, RFQ_STATUSES, PACKAGES } from '../../data/mis/procurementMock';
 import { CAT, STATUS_COLOR, AXIS_TICK, GRID_STROKE, countBy } from '../../components/mis/misUtils';
-import { StatTile, ChartCard, Donut, FilterSelect, Pill, FilterChips } from '../../components/mis/MisCharts';
+import { StatTile, ChartCard, Donut, FilterSelect, Pill, FilterChips, BackLink } from '../../components/mis/MisCharts';
 
 interface Filters {
   projectId?: string;
@@ -125,6 +125,7 @@ export default function ProcurementDashboard() {
 
   return (
     <div className="p-6 space-y-4">
+      <BackLink />
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

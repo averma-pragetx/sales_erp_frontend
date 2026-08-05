@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { StockItem, QualityResult } from '../../data/mis/inventoryMock';
 import { STOCK_ITEMS, ITEM_CATEGORIES, WAREHOUSES } from '../../data/mis/inventoryMock';
 import { CAT, STATUS_COLOR, countBy } from '../../components/mis/misUtils';
-import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips } from '../../components/mis/MisCharts';
+import { StatTile, ChartCard, Donut, HBar, FilterSelect, Pill, FilterChips, BackLink } from '../../components/mis/MisCharts';
 
 type GroupDim = 'projectId' | 'itemCategory' | 'warehouse';
 
@@ -127,6 +127,7 @@ export default function InventoryDashboard() {
 
   return (
     <div className="p-6 space-y-4">
+      <BackLink />
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

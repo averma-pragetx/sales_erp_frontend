@@ -8,7 +8,7 @@ import {
   ALL_SECTORS, ALL_REGIONS, ALL_CLIENTS, ALL_BD_OWNERS,
 } from '../../data/mis/tenderPipelineMock';
 import { CAT, STATUS_COLOR, AXIS_TICK, GRID_STROKE, countBy, sumByTop, daysUntil } from '../../components/mis/misUtils';
-import { StatTile, ChartCard, Donut, HBar, FilterSelect } from '../../components/mis/MisCharts';
+import { StatTile, ChartCard, Donut, HBar, FilterSelect, BackLink } from '../../components/mis/MisCharts';
 
 const STATUS_ORDER: TenderStatus[] = ['identified', 'evaluating', 'bid_in_progress', 'submitted', 'result_pending'];
 const PREQUAL_ORDER: PrequalStatus[] = ['pass', 'fail', 'pending'];
@@ -172,6 +172,7 @@ export default function TenderPipelineDashboard() {
 
   return (
     <div className="p-6 space-y-4">
+      <BackLink />
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

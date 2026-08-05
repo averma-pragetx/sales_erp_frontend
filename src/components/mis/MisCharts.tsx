@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Cell, PieChart, Pie, LabelList,
@@ -5,6 +6,14 @@ import {
 import { CAT, AXIS_TICK, GRID_STROKE } from './misUtils';
 
 // ─── Layout building blocks ─────────────────────────────────────────────────
+
+export function BackLink() {
+  return (
+    <Link to="/mis" className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline">
+      ← Back to MIS Dashboards
+    </Link>
+  );
+}
 
 export function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
